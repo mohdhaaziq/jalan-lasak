@@ -1,0 +1,277 @@
+/* Jalan Lasak — app chrome.
+   Colour, type and radius come from the Modernist tokens in modernist.css;
+   only the interface geometry (chrome heights, micro-label sizes) is literal,
+   because those sit below the --space-* scale. */
+
+:root {
+  /* Derived roles, so no app colour is invented outside the system. */
+  --jl-ink: var(--color-text);
+  --jl-on-ink: var(--color-bg);
+  --jl-muted: color-mix(in srgb, var(--color-text) 65%, transparent);
+  --jl-muted-on-ink: color-mix(in srgb, var(--color-bg) 72%, var(--color-text));
+  --jl-rule: color-mix(in srgb, var(--color-text) 12%, transparent);
+  --jl-map-bg: color-mix(in srgb, var(--color-text) 16%, transparent);
+  --jl-ok: #4caf50;        /* online indicator — status green, outside the mono palette */
+  --jl-gps: #2a78d6;       /* the GPS dot is blue by map convention, not by brand */
+}
+
+html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+body {
+  font-family: var(--font-body);
+  background: var(--color-bg);
+  overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%;
+}
+a { color: var(--color-accent-700); }
+a:hover { color: var(--color-accent); }
+
+#app { position: fixed; inset: 0; display: flex; flex-direction: column; }
+
+/* ── top bar ─────────────────────────────────────────────────────────── */
+#topbar {
+  flex: none;
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px;
+  padding-top: calc(10px + env(safe-area-inset-top));
+  background: var(--jl-ink); color: var(--jl-on-ink);
+  border-bottom: 2px solid var(--color-accent);
+  z-index: 1200;
+}
+#topbar .brand { font-family: var(--font-heading); font-weight: 800; font-size: 15px; letter-spacing: .08em; }
+#topbar .sub { font-size: 10px; letter-spacing: .14em; color: var(--jl-muted-on-ink); text-transform: uppercase; }
+#netdot {
+  margin-left: auto; display: flex; align-items: center; gap: 6px;
+  font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--jl-muted-on-ink);
+}
+#netdot .dot { width: 10px; height: 10px; background: var(--jl-ok); }
+#netdot.off .dot { background: var(--color-accent); }
+
+/* ── map ─────────────────────────────────────────────────────────────── */
+#map { flex: 1; min-height: 0; background: var(--jl-map-bg); }
+.leaflet-container { font-family: var(--font-body); background: var(--jl-map-bg); }
+.leaflet-control-attribution { font-size: 9.5px; border-radius: var(--radius-md); }
+/* Keep the scale bar clear of the attribution line along the bottom edge. */
+.leaflet-bottom.leaflet-left { bottom: 18px; }
+.leaflet-control-scale-line { border-radius: var(--radius-md); border-color: var(--jl-ink); }
+
+/* ── side buttons ────────────────────────────────────────────────────── */
+#fabs {
+  position: absolute; right: 10px; top: calc(64px + env(safe-area-inset-top));
+  display: flex; flex-direction: column; gap: 8px; z-index: 1100;
+}
+.fab {
+  width: 46px; height: 46px; min-width: 44px; min-height: 44px; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--color-neutral-100); border: 2px solid var(--jl-ink); border-radius: var(--radius-md);
+  color: var(--jl-ink); font-family: inherit; cursor: pointer;
+}
+.fab:hover { background: var(--color-neutral-200); }
+.fab:active { background: var(--color-neutral-300); }
+.fab.on { background: var(--color-accent); border-color: var(--color-accent); color: var(--jl-on-ink); }
+.fab.on:hover { background: var(--color-accent-600); }
+.fab svg { width: 22px; height: 22px; }
+
+/* ── mode banners over the map ───────────────────────────────────────── */
+#addbanner, #drawbar {
+  position: absolute; left: 0; right: 0; top: calc(52px + env(safe-area-inset-top));
+  z-index: 1100;
+}
+#addbanner {
+  display: none;
+  padding: 8px 14px;
+  background: var(--color-accent); color: var(--jl-on-ink);
+  font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+}
+#drawbar {
+  display: none; align-items: center; gap: 8px;
+  padding: 8px 14px;
+  background: var(--jl-ink); color: var(--jl-on-ink);
+}
+#drawbar .km { font-family: var(--font-heading); font-weight: 800; font-size: 16px; color: var(--color-accent-300); }
+#drawbar .hint { font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--jl-muted-on-ink); }
+#drawbar .sp { flex: 1; }
+
+/* ── the app's button at interface scale: 2px rule, flush-left micro-label ── */
+.jl-btn {
+  display: inline-flex; align-items: center; justify-content: flex-start; gap: 6px;
+  padding: 6px 8px; min-height: 36px;
+  background: var(--color-neutral-100); color: var(--jl-ink);
+  border: 2px solid var(--jl-ink); border-radius: var(--radius-md);
+  font-family: var(--font-heading); font-size: 10.5px; font-weight: 700;
+  letter-spacing: .05em; text-transform: uppercase; cursor: pointer;
+}
+.jl-btn:hover { background: var(--color-neutral-200); }
+.jl-btn:active { background: var(--color-neutral-300); }
+.jl-btn:disabled { opacity: .45; cursor: not-allowed; }
+.jl-btn.acc { background: var(--color-accent); border-color: var(--color-accent); color: var(--jl-on-ink); }
+.jl-btn.acc:hover { background: var(--color-accent-600); border-color: var(--color-accent-600); }
+.jl-btn.acc:active { background: var(--color-accent-700); border-color: var(--color-accent-700); }
+.jl-btn.on-ink { background: transparent; border-color: var(--jl-on-ink); color: var(--jl-on-ink); }
+.jl-btn.on-ink:hover { background: color-mix(in srgb, var(--color-bg) 16%, transparent); }
+.jl-btn.on-ink.acc { background: var(--color-accent); border-color: var(--color-accent); }
+.jl-btn.sm { min-height: 0; padding: 5px 7px; font-size: 9.5px; }
+
+/* ── bottom sheet ────────────────────────────────────────────────────── */
+#sheet {
+  flex: none; display: flex; flex-direction: column;
+  max-height: 46vh;
+  background: var(--color-neutral-100);
+  border-top: 2px solid var(--jl-ink);
+  padding-bottom: env(safe-area-inset-bottom);
+  z-index: 1200;
+}
+#sheethead {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px; min-height: 44px; box-sizing: border-box;
+  width: 100%; text-align: left;
+  background: transparent; border: 0; border-radius: var(--radius-md);
+  font-family: inherit; color: var(--jl-ink);
+  cursor: pointer; user-select: none;
+}
+#sheethead .t { font-family: var(--font-heading); font-weight: 800; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; }
+#sheethead .n { font-size: 11px; color: var(--jl-muted); }
+#sheethead .chev { margin-left: auto; transition: transform .2s; }
+#sheet.open #sheethead .chev { transform: rotate(180deg); }
+#sheetbody { display: none; overflow-y: auto; -webkit-overflow-scrolling: touch; border-top: 2px solid var(--jl-rule); }
+#sheet.open #sheetbody { display: block; }
+
+/* ── compass strip ───────────────────────────────────────────────────── */
+#strip {
+  display: flex; align-items: center; gap: 12px;
+  padding: 8px 14px;
+  background: var(--jl-ink); color: var(--jl-on-ink);
+}
+#strip .arrow { width: 34px; height: 34px; flex: none; display: flex; align-items: center; justify-content: center; }
+#strip .arrow svg { width: 28px; height: 28px; transition: transform .3s; }
+#strip .tgt { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--jl-muted-on-ink); }
+#strip .val { font-family: var(--font-heading); font-weight: 800; font-size: 16px; }
+#strip .brg { margin-left: auto; text-align: right; }
+#strip .brg .val { color: var(--color-accent-300); }
+
+/* ── rows ────────────────────────────────────────────────────────────── */
+.row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 11px 14px; min-height: 44px; box-sizing: border-box;
+  width: 100%; text-align: left;
+  background: transparent; border: 0; border-bottom: 1px solid var(--jl-rule);
+  font-family: inherit; color: var(--jl-ink);
+  cursor: pointer;
+}
+.row:hover { background: var(--color-bg); }
+.row .badge {
+  flex: none; width: 30px; height: 30px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--jl-ink); color: var(--jl-on-ink);
+  font-family: var(--font-heading); font-weight: 800; font-size: 12px;
+}
+.row.start .badge { background: var(--color-accent); }
+.row .nm { font-weight: 600; font-size: 14px; }
+.row .co { font-size: 10.5px; color: var(--jl-muted); letter-spacing: .02em; }
+.row .dist { margin-left: auto; font-family: var(--font-heading); font-weight: 800; font-size: 14px; white-space: nowrap; }
+.row .dist small {
+  display: block; font-weight: 400; font-size: 9.5px; color: var(--jl-muted);
+  text-transform: uppercase; letter-spacing: .08em; text-align: right;
+}
+.row .rline { flex: none; width: 30px; height: 0; border-top: 3px dashed var(--color-accent); }
+.row .del { margin-left: 8px; flex: none; }
+.empty { padding: 10px 14px; font-size: 12px; color: var(--jl-muted); }
+
+/* ── layers + contour ────────────────────────────────────────────────── */
+#layers { display: flex; padding: 12px 14px 4px; }
+#layers button {
+  flex: 1; min-height: 44px; padding: 8px 4px;
+  background: var(--color-neutral-100); color: var(--jl-ink);
+  border: 2px solid var(--jl-ink); border-left-width: 0; border-radius: var(--radius-md);
+  font-family: var(--font-heading); font-size: 11px; font-weight: 700;
+  letter-spacing: .06em; text-transform: uppercase; cursor: pointer;
+}
+#layers button:first-child { border-left-width: 2px; }
+#layers button:not(.on):hover { background: var(--color-neutral-200); }
+#layers button.on { background: var(--jl-ink); color: var(--jl-on-ink); }
+
+.check {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 14px 12px; min-height: 44px; box-sizing: border-box;
+  width: 100%; text-align: left;
+  background: transparent; border: 0;
+  font-family: inherit; font-size: 12px; color: var(--jl-ink);
+  cursor: pointer; user-select: none;
+}
+.check .box {
+  flex: none; width: 20px; height: 20px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--color-neutral-100); border: 2px solid var(--jl-ink);
+}
+.check.on .box { background: var(--color-accent); border-color: var(--color-accent); }
+.check.on .box::after { content: ''; width: 8px; height: 8px; background: var(--jl-on-ink); }
+#contourrow { border-bottom: 2px solid var(--jl-rule); }
+
+/* ── section heads ───────────────────────────────────────────────────── */
+.sect-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px 6px;
+  border-top: 2px solid var(--jl-rule);
+  font-family: var(--font-heading); font-weight: 800; font-size: 12px;
+  letter-spacing: .08em; text-transform: uppercase;
+}
+.sect-head .n { font-weight: 400; font-size: 11px; text-transform: none; letter-spacing: 0; color: var(--jl-muted); }
+
+/* ── offline block ───────────────────────────────────────────────────── */
+#offline { padding: 4px 14px 14px; }
+#offline .desc { font-size: 11.5px; color: var(--jl-muted); margin-bottom: 8px; }
+#offline .acts { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+#offline .stat { font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--jl-muted); }
+.bar { height: 6px; background: var(--jl-rule); margin-top: 10px; display: none; }
+.bar.on { display: block; }
+.bar span { display: block; height: 100%; width: 0; background: var(--color-accent); transition: width .2s; }
+
+/* ── markers + popups ────────────────────────────────────────────────── */
+.jl-marker {
+  display: flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px;
+  background: var(--jl-ink); color: var(--jl-on-ink);
+  border: 2px solid var(--color-neutral-100);
+  font-family: var(--font-heading); font-weight: 800; font-size: 13px;
+  box-shadow: 0 1px 4px color-mix(in srgb, var(--color-neutral-900) 40%, transparent);
+}
+.jl-marker.start { background: var(--color-accent); }
+.leaflet-popup-content-wrapper {
+  border-radius: var(--radius-md); border: 2px solid var(--jl-ink); box-shadow: none;
+  background: var(--color-neutral-100);
+}
+.leaflet-popup-tip { border-radius: 0; box-shadow: none; background: var(--jl-ink); }
+.leaflet-popup-content { font-family: var(--font-body); margin: 12px 14px; }
+.leaflet-popup-close-button { display: none; }
+.pop-name { font-family: var(--font-heading); font-weight: 800; font-size: 14px; margin-bottom: 2px; }
+.pop-co { font-size: 10.5px; color: var(--jl-muted); margin-bottom: 8px; }
+.pop-actions { display: flex; gap: 6px; }
+
+/* ── dialogs (replace the browser's prompt/confirm/alert) ────────────── */
+.jl-backdrop { z-index: 2000; }
+.jl-dialog {
+  background: var(--color-neutral-100);
+  border: 2px solid var(--jl-ink);
+  box-shadow: none;
+  gap: var(--space-2);
+}
+.jl-dialog .dialog-title { font-size: 17px; letter-spacing: .01em; }
+.jl-dialog .dialog-body { font-size: 13px; opacity: 1; color: var(--jl-muted); }
+.jl-dialog .input { background: var(--color-bg); border: 2px solid var(--jl-ink); min-height: 44px; }
+.jl-dialog .input:focus-visible { border-color: var(--color-accent); }
+.jl-dialog .dialog-actions { justify-content: flex-start; flex-wrap: wrap; }
+.jl-dialog .jl-btn { min-height: 40px; padding: 8px 12px; }
+
+/* ── toast ───────────────────────────────────────────────────────────── */
+#toast {
+  position: fixed; left: 14px; right: 14px; bottom: calc(14px + env(safe-area-inset-bottom));
+  z-index: 2100; display: none;
+  padding: 10px 14px;
+  background: var(--jl-ink); color: var(--jl-on-ink);
+  border-left: 4px solid var(--color-accent);
+  font-size: 12px; letter-spacing: .02em;
+}
+#toast.on { display: block; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; }
+}

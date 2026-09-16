@@ -1,0 +1,20 @@
+{
+  "name": "Jalan Lasak — Peta Program",
+  "short_name": "Jalan Lasak",
+  "description": "Peta program Jalan Lasak: titik mula, checkpoint, laluan cadangan dan peta topo/satelit yang berfungsi tanpa talian.",
+  "lang": "ms",
+  "dir": "ltr",
+  "start_url": "./",
+  "scope": "./",
+  "id": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#f3f2f2",
+  "theme_color": "#201e1d",
+  "categories": ["navigation", "travel", "sports"],
+  "icons": [
+    { "src": "assets/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "assets/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "assets/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
