@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#201e1d">
+<title>Jalan Lasak — Peta Program</title>
+<link rel="stylesheet" href="_ds/modernist-5cddb07b-9c02-4f95-a833-13b9f9185058/styles.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script>
+<style>
+  html, body { margin:0; padding:0; height:100%; overflow:hidden; }
+  body { font-family: var(--font-body, 'Archivo', sans-serif); background: var(--color-bg, #f3f2f2); }
+  a { color: var(--color-accent-700, #a02008); } a:hover { color: var(--color-accent, #ec3013); }
+  #app { position:fixed; inset:0; display:flex; flex-direction:column; }
+  /* top bar */
+  #topbar { flex:none; background:#201e1d; color:#f3f2f2; display:flex; align-items:center; gap:10px; padding:10px 14px calc(10px) 14px; padding-top:calc(10px + env(safe-area-inset-top)); border-bottom:2px solid var(--color-accent,#ec3013); z-index:1200; }
+  #topbar .brand { font-weight:800; font-size:15px; letter-spacing:.08em; }
+  #topbar .sub { font-size:10px; letter-spacing:.14em; color:#b9b5b2; text-transform:uppercase; }
+  #netdot { margin-left:auto; display:flex; align-items:center; gap:6px; font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:#b9b5b2; }
+  #netdot .dot { width:10px; height:10px; background:#4caf50; }
+  #netdot.off .dot { background:var(--color-accent,#ec3013); }
+  #map { flex:1; min-height:0; background:#dcdad8; }
+  /* side buttons */
+  #fabs { position:absolute; right:10px; top:calc(64px + env(safe-area-inset-top)); display:flex; flex-direction:column; gap:8px; z-index:1100; }
+  .fab { width:46px; height:46px; min-width:44px; min-height:44px; background:#fff; border:2px solid #201e1d; color:#201e1d; display:flex; align-items:center; justify-content:center; cursor:pointer; font-family:inherit; padding:0; }
+  .fab:hover { background:#e9e7e5; }
+  .fab:active { background:#dcdad8; }
+  .fab.on { background:var(--color-accent,#ec3013); border-color:var(--color-accent,#ec3013); color:#fff; }
+  .fab:focus-visible { outline:2px solid var(--color-accent,#ec3013); outline-offset:2px; }
+  .fab svg { width:22px; height:22px; }
+  /* add-mode banner */
+  #addbanner { position:absolute; left:0; right:0; top:calc(52px + env(safe-area-inset-top)); background:var(--color-accent,#ec3013); color:#fff; font-size:12px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; padding:8px 14px; z-index:1100; display:none; }
+  /* bottom sheet */
+  #sheet { flex:none; background:#fff; border-top:2px solid #201e1d; z-index:1200; max-height:46vh; display:flex; flex-direction:column; padding-bottom:env(safe-area-inset-bottom); }
+  #sheethead { display:flex; align-items:center; gap:10px; padding:10px 14px; cursor:pointer; user-select:none; min-height:44px; box-sizing:border-box; }
+  #sheethead .t { font-weight:800; font-size:13px; letter-spacing:.08em; text-transform:uppercase; }
+  #sheethead .n { font-size:11px; color:#6d6a67; }
+  #sheethead .chev { margin-left:auto; transition:transform .2s; }
+  #sheet.open #sheethead .chev { transform:rotate(180deg); }
+  #sheetbody { display:none; overflow-y:auto; border-top:2px solid #e4e2e0; }
+  #sheet.open #sheetbody { display:block; }
+  /* compass strip */
+  #strip { display:flex; align-items:center; gap:12px; padding:8px 14px; background:#201e1d; color:#fff; }
+  #strip .arrow { width:34px; height:34px; flex:none; display:flex; align-items:center; justify-content:center; }
+  #strip .arrow svg { width:28px; height:28px; transition:transform .3s; }
+  #strip .tgt { font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:#b9b5b2; }
+  #strip .val { font-weight:800; font-size:16px; }
+  #strip .brg { margin-left:auto; text-align:right; }
+  #strip .brg .val { color:var(--color-accent-300,#f7a99b); }
+  /* rows */
+  .row { display:flex; align-items:center; gap:12px; padding:11px 14px; border-bottom:1px solid #e4e2e0; cursor:pointer; min-height:44px; box-sizing:border-box; }
+  .row:hover { background:#f3f2f2; }
+  .row .badge { flex:none; width:30px; height:30px; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:12px; background:#201e1d; color:#fff; }
+  .row.start .badge { background:var(--color-accent,#ec3013); }
+  .row .nm { font-weight:600; font-size:14px; }
+  .row .co { font-size:10.5px; color:#6d6a67; letter-spacing:.02em; }
+  .row .dist { margin-left:auto; font-weight:800; font-size:14px; white-space:nowrap; }
+  .row .dist small { display:block; font-weight:400; font-size:9.5px; color:#6d6a67; text-transform:uppercase; letter-spacing:.08em; text-align:right; }
+  /* layer segmented */
+  #layers { display:flex; gap:0; padding:12px 14px 4px; }
+  #layers button { flex:1; min-height:44px; border:2px solid #201e1d; border-left-width:0; background:#fff; font-family:inherit; font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; cursor:pointer; padding:8px 4px; }
+  #layers button:first-child { border-left-width:2px; }
+  #layers button.on { background:#201e1d; color:#fff; }
+  #contourrow { display:flex; align-items:center; gap:10px; padding:8px 14px 12px; font-size:12px; border-bottom:2px solid #e4e2e0; min-height:44px; box-sizing:border-box; cursor:pointer; user-select:none; }
+  #contourrow .box { width:20px; height:20px; border:2px solid #201e1d; display:flex; align-items:center; justify-content:center; background:#fff; }
+  #contourrow.on .box { background:var(--color-accent,#ec3013); border-color:var(--color-accent,#ec3013); }
+  #contourrow.on .box::after { content:''; width:8px; height:8px; background:#fff; }
+  /* draw toolbar */
+  #drawbar { position:absolute; left:0; right:0; top:calc(52px + env(safe-area-inset-top)); background:#201e1d; color:#fff; z-index:1100; display:none; align-items:center; gap:8px; padding:8px 14px; }
+  #drawbar .km { font-weight:800; font-size:16px; color:var(--color-accent-300,#f7a99b); }
+  #drawbar .hint { font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; color:#b9b5b2; }
+  #drawbar .sp { flex:1; }
+  #drawbar button { border:2px solid #fff; background:transparent; color:#fff; font-family:inherit; font-size:10.5px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; padding:8px 10px; min-height:36px; cursor:pointer; }
+  #drawbar button.acc { background:var(--color-accent,#ec3013); border-color:var(--color-accent,#ec3013); }
+  .rt-head { display:flex; align-items:center; gap:10px; padding:10px 14px 6px; font-weight:800; font-size:12px; letter-spacing:.08em; text-transform:uppercase; border-top:2px solid #e4e2e0; }
+  .row .rline { flex:none; width:30px; height:0; border-top:3px dashed var(--color-accent,#ec3013); }
+  .row .del { margin-left:8px; border:2px solid #201e1d; background:#fff; font-family:inherit; font-size:9.5px; font-weight:700; text-transform:uppercase; padding:5px 7px; cursor:pointer; }
+  /* markers */
+  .jl-marker { display:flex; align-items:center; justify-content:center; font-family:'Archivo',sans-serif; font-weight:800; font-size:13px; color:#fff; background:#201e1d; border:2px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,.4); }
+  .jl-marker.start { background:#ec3013; }
+  .leaflet-popup-content-wrapper { border-radius:0; border:2px solid #201e1d; box-shadow:none; }
+  .leaflet-popup-content { font-family:'Archivo',sans-serif; margin:12px 14px; }
+  .pop-name { font-weight:800; font-size:14px; margin-bottom:2px; }
+  .pop-co { font-size:10.5px; color:#6d6a67; margin-bottom:8px; }
+  .pop-actions { display:flex; gap:6px; }
+  .pop-actions button { border:2px solid #201e1d; background:#fff; font-family:inherit; font-size:10.5px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; padding:6px 8px; cursor:pointer; }
+  .pop-actions button.acc { background:#ec3013; border-color:#ec3013; color:#fff; }
+  .leaflet-container { font-family:'Archivo',sans-serif; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="topbar">
+    <div>
+      <div class="brand">JALAN LASAK</div>
+      <div class="sub">Kuala Kubu Bharu · Peta Program</div>
+    </div>
+    <div id="netdot"><span class="dot"></span><span id="netlabel">Online</span></div>
+  </div>
+  <div id="map"></div>
+  <div id="addbanner">Mod tambah — ketik pada peta untuk letak checkpoint</div>
+  <div id="fabs">
+    <button class="fab" id="btnLocate" title="Lokasi saya" aria-label="Lokasi saya">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3M12 19v3M2 12h3M19 12h3"></path><circle cx="12" cy="12" r="8"></circle></svg>
+    </button>
+    <button class="fab" id="btnAdd" title="Tambah checkpoint" aria-label="Tambah checkpoint">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14M5 12h14"></path></svg>
+    </button>
+    <button class="fab" id="btnDraw" title="Lukis laluan" aria-label="Lukis laluan cadangan">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20c4-1 3-6 6-8s7-1 10-8" stroke-dasharray="3 3"></path><circle cx="4" cy="20" r="2" fill="currentColor" stroke="none"></circle><circle cx="20" cy="4" r="2" fill="currentColor" stroke="none"></circle></svg>
+    </button>
+    <button class="fab" id="btnFit" title="Lihat semua" aria-label="Lihat semua titik">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"></path></svg>
+    </button>
+  </div>
+  <div id="drawbar">
+    <div><div class="km" id="drawkm">0.00 km</div><div class="hint">Ketik peta utk titik laluan</div></div>
+    <div class="sp"></div>
+    <button id="drawUndo">Undo</button>
+    <button id="drawCancel">Batal</button>
+    <button class="acc" id="drawDone">Siap</button>
+  </div>
+  <div id="sheet" class="open">
+    <div id="strip">
+      <div class="arrow"><svg id="arrowsvg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 L18 20 L12 16 L6 20 Z"></path></svg></div>
+      <div>
+        <div class="tgt" id="tgtname">Sasaran: —</div>
+        <div class="val" id="tgtdist">— km</div>
+      </div>
+      <div class="brg">
+        <div class="tgt">Bearing</div>
+        <div class="val" id="tgtbrg">—°</div>
+      </div>
+    </div>
+    <div id="sheethead">
+      <span class="t">Checkpoint</span>
+      <span class="n" id="cpcount"></span>
+      <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#201e1d" stroke-width="2.4"><path d="M6 15l6-6 6 6"></path></svg>
+    </div>
+    <div id="sheetbody">
+      <div id="layers">
+        <button data-layer="osm" class="on">Denai OSM</button>
+        <button data-layer="topo">Topo</button>
+        <button data-layer="sat">Satelit</button>
+      </div>
+      <div id="contourrow"><span class="box"></span><span><b>Kontur</b> — lapisan topo lutsinar atas satelit</span></div>
+      <div id="pointlist"></div>
+      <div class="rt-head">Laluan cadangan <span class="n" id="rtcount" style="font-weight:400;text-transform:none;letter-spacing:0;color:#6d6a67"></span></div>
+      <div id="routelist"></div>
+    </div>
+  </div>
+</div>
+<script>
+// ---------- data ----------
+var LS_KEY = 'jl_points_v1';
+var DEFAULT_POINTS = [
+  { id: 'start', type: 'start', name: 'MULA — Parking Stesen KTM Kuala Kubu Bharu', lat: 3.556879, lng: 101.632263 },
+  { id: 'cp1', type: 'cp', name: 'Checkpoint 1', lat: 3.494318, lng: 101.688912 },
+  { id: 'cp2', type: 'cp', name: 'Checkpoint 2', lat: 3.567827, lng: 101.613620 }
+];
+var points = [];
+try { points = JSON.parse(localStorage.getItem(LS_KEY) || 'null') || DEFAULT_POINTS.slice(); }
+catch (e) { points = DEFAULT_POINTS.slice(); }
+function save() { try { localStorage.setItem(LS_KEY, JSON.stringify(points)); } catch (e) {} }
+
+// ---------- map ----------
+var map = L.map('map', { zoomControl: false, attributionControl: true });
+L.control.scale({ imperial: false, position: 'bottomleft' }).addTo(map);
+var baseLayers = {
+  osm: L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap contributors' }),
+  topo: L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', { maxZoom: 17, attribution: '© OpenStreetMap contributors, SRTM | © OpenTopoMap (CC-BY-SA)' }),
+  sat: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: 'Imagery © Esri, Maxar, Earthstar Geographics' })
+};
+var contourOverlay = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', { maxZoom: 17, opacity: 0.45, attribution: '© OpenTopoMap (CC-BY-SA)' });
+var currentBase = 'osm';
+baseLayers.osm.addTo(map);
+
+function setBase(key) {
+  if (key === currentBase) return;
+  map.removeLayer(baseLayers[currentBase]);
+  baseLayers[key].addTo(map);
+  currentBase = key;
+  document.querySelectorAll('#layers button').forEach(function (b) { b.classList.toggle('on', b.dataset.layer === key); });
+}
+document.querySelectorAll('#layers button').forEach(function (b) {
+  b.addEventListener('click', function () { setBase(b.dataset.layer); });
+});
+var contourRow = document.getElementById('contourrow');
+contourRow.addEventListener('click', function () {
+  var on = contourRow.classList.toggle('on');
+  if (on) contourOverlay.addTo(map); else map.removeLayer(contourOverlay);
+});
+
+// ---------- markers ----------
+var markers = {};
+function icon(p, idx) {
+  var isStart = p.type === 'start';
+  var label = isStart ? 'M' : String(idx);
+  return L.divIcon({ className: '', html: '<div class="jl-marker' + (isStart ? ' start' : '') + '" style="width:30px;height:30px">' + label + '</div>', iconSize: [30, 30], iconAnchor: [15, 15] });
+}
+function popupHtml(p) {
+  var co = p.lat.toFixed(6) + ', ' + p.lng.toFixed(6);
+  var h = '<div class="pop-name">' + esc(p.name) + '</div><div class="pop-co">' + co + '</div><div class="pop-actions">';
+  h += '<button class="acc" onclick="setTarget(\'' + p.id + '\')">Sasar</button>';
+  h += '<button onclick="renamePoint(\'' + p.id + '\')">Nama</button>';
+  if (p.type !== 'start') h += '<button onclick="deletePoint(\'' + p.id + '\')">Padam</button>';
+  h += '</div>';
+  return h;
+}
+function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+function rebuildMarkers() {
+  Object.keys(markers).forEach(function (k) { map.removeLayer(markers[k]); });
+  markers = {};
+  var cpIdx = 0;
+  points.forEach(function (p) {
+    if (p.type !== 'start') cpIdx++;
+    var m = L.marker([p.lat, p.lng], { icon: icon(p, cpIdx), draggable: true });
+    m.bindPopup(popupHtml(p));
+    m.on('dragend', function () {
+      var ll = m.getLatLng(); p.lat = ll.lat; p.lng = ll.lng; save(); renderList(); m.setPopupContent(popupHtml(p)); updateStrip();
+    });
+    m.addTo(map);
+    markers[p.id] = m;
+  });
+  renderList();
+}
+
+// ---------- geodesy ----------
+function distM(a, b) {
+  var R = 6371000, toR = Math.PI / 180;
+  var dLat = (b.lat - a.lat) * toR, dLng = (b.lng - a.lng) * toR;
+  var s = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * toR) * Math.cos(b.lat * toR) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(s));
+}
+function bearing(a, b) {
+  var toR = Math.PI / 180;
+  var y = Math.sin((b.lng - a.lng) * toR) * Math.cos(b.lat * toR);
+  var x = Math.cos(a.lat * toR) * Math.sin(b.lat * toR) - Math.sin(a.lat * toR) * Math.cos(b.lat * toR) * Math.cos((b.lng - a.lng) * toR);
+  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+}
+function fmtDist(m) { return m >= 1000 ? (m / 1000).toFixed(2) + ' km' : Math.round(m) + ' m'; }
+
+// ---------- GPS ----------
+var myPos = null, myMarker = null, myCircle = null, follow = false;
+var btnLocate = document.getElementById('btnLocate');
+function startGPS() {
+  if (!navigator.geolocation) { alert('GPS tidak disokong pada peranti ini.'); return; }
+  navigator.geolocation.watchPosition(function (pos) {
+    myPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+    var acc = pos.coords.accuracy || 30;
+    if (!myMarker) {
+      myMarker = L.circleMarker(myPos, { radius: 8, color: '#fff', weight: 2, fillColor: '#2a78d6', fillOpacity: 1 }).addTo(map);
+      myCircle = L.circle(myPos, { radius: acc, color: '#2a78d6', weight: 1, fillColor: '#2a78d6', fillOpacity: 0.12 }).addTo(map);
+    } else {
+      myMarker.setLatLng(myPos); myCircle.setLatLng(myPos).setRadius(acc);
+    }
+    if (follow) map.panTo(myPos);
+    renderList(); updateStrip();
+  }, function (err) {
+    alert('Gagal dapatkan lokasi: ' + err.message);
+    follow = false; btnLocate.classList.remove('on');
+  }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 });
+}
+btnLocate.addEventListener('click', function () {
+  follow = !follow;
+  btnLocate.classList.toggle('on', follow);
+  if (follow) { startGPS(); if (myPos) map.panTo(myPos); }
+});
+
+// ---------- target / compass ----------
+var targetId = localStorage.getItem('jl_target') || 'cp1';
+var deviceHeading = null;
+window.setTarget = function (id) {
+  targetId = id; try { localStorage.setItem('jl_target', id); } catch (e) {}
+  map.closePopup(); updateStrip(); renderList();
+};
+function updateStrip() {
+  var t = points.find(function (p) { return p.id === targetId; });
+  var nameEl = document.getElementById('tgtname'), distEl = document.getElementById('tgtdist'), brgEl = document.getElementById('tgtbrg');
+  if (!t) { nameEl.textContent = 'Sasaran: —'; distEl.textContent = '— km'; brgEl.textContent = '—°'; return; }
+  nameEl.textContent = 'Sasaran: ' + t.name;
+  var origin = myPos || points.find(function (p) { return p.type === 'start'; });
+  if (origin) {
+    distEl.textContent = fmtDist(distM(origin, t)) + (myPos ? '' : ' (dari MULA)');
+    var b = bearing(origin, t);
+    brgEl.textContent = Math.round(b) + '°';
+    var rot = deviceHeading == null ? b : (b - deviceHeading);
+    document.getElementById('arrowsvg').style.transform = 'rotate(' + rot + 'deg)';
+  }
+}
+function onOrient(e) {
+  var h = null;
+  if (typeof e.webkitCompassHeading === 'number') h = e.webkitCompassHeading;
+  else if (e.absolute && typeof e.alpha === 'number') h = 360 - e.alpha;
+  if (h != null) { deviceHeading = h; updateStrip(); }
+}
+if (window.DeviceOrientationEvent) {
+  if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+    document.body.addEventListener('click', function req() {
+      DeviceOrientationEvent.requestPermission().then(function (r) {
+        if (r === 'granted') window.addEventListener('deviceorientation', onOrient);
+      }).catch(function () {});
+      document.body.removeEventListener('click', req);
+    });
+  } else {
+    window.addEventListener('deviceorientationabsolute', onOrient);
+    window.addEventListener('deviceorientation', onOrient);
+  }
+}
+
+// ---------- add / edit / delete ----------
+var addMode = false;
+var btnAdd = document.getElementById('btnAdd'), addBanner = document.getElementById('addbanner');
+btnAdd.addEventListener('click', function () {
+  addMode = !addMode;
+  btnAdd.classList.toggle('on', addMode);
+  addBanner.style.display = addMode ? 'block' : 'none';
+});
+function addPointAt(latlng) {
+  var n = points.filter(function (p) { return p.type === 'cp'; }).length + 1;
+  var name = prompt('Nama checkpoint:', 'Checkpoint ' + n);
+  if (name === null) return;
+  var p = { id: 'cp_' + Date.now(), type: 'cp', name: name || ('Checkpoint ' + n), lat: latlng.lat, lng: latlng.lng };
+  points.push(p); save(); rebuildMarkers(); updateStrip();
+}
+map.on('click', function (e) {
+  if (drawMode) { drawAddVertex(e.latlng); return; }
+  if (addMode) { addPointAt(e.latlng); addMode = false; btnAdd.classList.remove('on'); addBanner.style.display = 'none'; }
+});
+map.on('contextmenu', function (e) { if (!drawMode) addPointAt(e.latlng); }); // tekan lama pada mobile
+
+// ---------- laluan cadangan ----------
+var RT_KEY = 'jl_routes_v1';
+var routes = [];
+try { routes = JSON.parse(localStorage.getItem(RT_KEY) || '[]'); } catch (e) { routes = []; }
+function saveRoutes() { try { localStorage.setItem(RT_KEY, JSON.stringify(routes)); } catch (e) {} }
+var routeLayers = {};
+function routeKm(lls) { var t = 0; for (var i = 1; i < lls.length; i++) t += distM({ lat: lls[i-1][0], lng: lls[i-1][1] }, { lat: lls[i][0], lng: lls[i][1] }); return t / 1000; }
+function rebuildRoutes() {
+  Object.keys(routeLayers).forEach(function (k) { map.removeLayer(routeLayers[k]); });
+  routeLayers = {};
+  routes.forEach(function (r) {
+    var pl = L.polyline(r.latlngs, { color: '#ec3013', weight: 4, dashArray: '8 6', opacity: 0.9 });
+    pl.bindPopup('<div class="pop-name">' + esc(r.name) + '</div><div class="pop-co">± ' + routeKm(r.latlngs).toFixed(2) + ' km</div><div class="pop-actions"><button onclick="deleteRoute(\'' + r.id + '\')">Padam</button></div>');
+    pl.addTo(map);
+    routeLayers[r.id] = pl;
+  });
+  renderRouteList();
+}
+window.deleteRoute = function (id) {
+  var r = routes.find(function (x) { return x.id === id; }); if (!r) return;
+  if (!confirm('Padam laluan "' + r.name + '"?')) return;
+  routes = routes.filter(function (x) { return x.id !== id; });
+  saveRoutes(); rebuildRoutes(); map.closePopup();
+};
+function renderRouteList() {
+  var wrap = document.getElementById('routelist');
+  var html = '';
+  routes.forEach(function (r) {
+    var km = routeKm(r.latlngs).toFixed(2);
+    html += '<div class="row" data-rid="' + r.id + '"><span class="rline"></span>' +
+      '<span><span class="nm">' + esc(r.name) + '</span><br><span class="co">' + r.latlngs.length + ' titik</span></span>' +
+      '<span class="dist">± ' + km + ' km</span><button class="del" data-del="' + r.id + '">Padam</button></div>';
+  });
+  wrap.innerHTML = html || '<div style="padding:10px 14px;font-size:12px;color:#6d6a67">Tiada laluan lagi — tekan butang garis putus utk lukis.</div>';
+  document.getElementById('rtcount').textContent = routes.length ? '· ' + routes.length : '';
+  wrap.querySelectorAll('.row').forEach(function (row) {
+    row.addEventListener('click', function (ev) {
+      if (ev.target.dataset.del) { window.deleteRoute(ev.target.dataset.del); return; }
+      var r = routes.find(function (x) { return x.id === row.dataset.rid; });
+      if (r) { map.fitBounds(L.latLngBounds(r.latlngs).pad(0.2)); routeLayers[r.id] && routeLayers[r.id].openPopup(); }
+    });
+  });
+}
+// draw mode
+var drawMode = false, drawPts = [], drawLine = null, drawDots = [];
+var btnDraw = document.getElementById('btnDraw'), drawbar = document.getElementById('drawbar');
+function drawRefresh() {
+  var lls = drawPts.map(function (p) { return [p.lat, p.lng]; });
+  if (!drawLine) drawLine = L.polyline([], { color: '#ec3013', weight: 4, dashArray: '8 6' }).addTo(map);
+  drawLine.setLatLngs(lls);
+  document.getElementById('drawkm').textContent = routeKm(lls).toFixed(2) + ' km';
+}
+function drawAddVertex(ll) {
+  drawPts.push(ll);
+  drawDots.push(L.circleMarker(ll, { radius: 5, color: '#fff', weight: 2, fillColor: '#ec3013', fillOpacity: 1 }).addTo(map));
+  drawRefresh();
+}
+function drawClear() {
+  if (drawLine) { map.removeLayer(drawLine); drawLine = null; }
+  drawDots.forEach(function (d) { map.removeLayer(d); }); drawDots = [];
+  drawPts = [];
+}
+function setDrawMode(on) {
+  drawMode = on;
+  btnDraw.classList.toggle('on', on);
+  drawbar.style.display = on ? 'flex' : 'none';
+  if (on) { addMode = false; btnAdd.classList.remove('on'); addBanner.style.display = 'none'; document.getElementById('drawkm').textContent = '0.00 km'; }
+  else drawClear();
+}
+btnDraw.addEventListener('click', function () { setDrawMode(!drawMode); });
+document.getElementById('drawUndo').addEventListener('click', function () {
+  drawPts.pop();
+  var d = drawDots.pop(); if (d) map.removeLayer(d);
+  drawRefresh();
+});
+document.getElementById('drawCancel').addEventListener('click', function () { setDrawMode(false); });
+document.getElementById('drawDone').addEventListener('click', function () {
+  if (drawPts.length < 2) { alert('Perlu sekurang-kurangnya 2 titik.'); return; }
+  var name = prompt('Nama laluan:', 'Laluan ' + (routes.length + 1));
+  if (name === null) return;
+  routes.push({ id: 'rt_' + Date.now(), name: name || ('Laluan ' + (routes.length + 1)), latlngs: drawPts.map(function (p) { return [p.lat, p.lng]; }) });
+  saveRoutes(); setDrawMode(false); rebuildRoutes();
+});
+window.renamePoint = function (id) {
+  var p = points.find(function (x) { return x.id === id; }); if (!p) return;
+  var n = prompt('Nama baru:', p.name); if (n === null || !n.trim()) return;
+  p.name = n.trim(); save(); rebuildMarkers(); updateStrip();
+};
+window.deletePoint = function (id) {
+  var p = points.find(function (x) { return x.id === id; }); if (!p) return;
+  if (!confirm('Padam "' + p.name + '"?')) return;
+  points = points.filter(function (x) { return x.id !== id; });
+  if (targetId === id) targetId = 'start';
+  save(); rebuildMarkers(); updateStrip();
+};
+
+// ---------- list / sheet ----------
+var sheet = document.getElementById('sheet');
+document.getElementById('sheethead').addEventListener('click', function () { sheet.classList.toggle('open'); });
+function renderList() {
+  var origin = myPos || points.find(function (p) { return p.type === 'start'; });
+  var wrap = document.getElementById('pointlist');
+  var cpIdx = 0, html = '';
+  points.forEach(function (p) {
+    var isStart = p.type === 'start';
+    if (!isStart) cpIdx++;
+    var d = origin && p !== origin ? fmtDist(distM(origin, p)) : (isStart && !myPos ? '—' : (origin ? fmtDist(distM(origin, p)) : '—'));
+    html += '<div class="row' + (isStart ? ' start' : '') + '" data-id="' + p.id + '">' +
+      '<span class="badge">' + (isStart ? 'M' : cpIdx) + '</span>' +
+      '<span><span class="nm">' + esc(p.name) + (p.id === targetId ? ' ◀' : '') + '</span><br><span class="co">' + p.lat.toFixed(6) + ', ' + p.lng.toFixed(6) + '</span></span>' +
+      '<span class="dist">' + d + '<small>' + (myPos ? 'dari saya' : 'dari mula') + '</small></span></div>';
+  });
+  wrap.innerHTML = html;
+  document.getElementById('cpcount').textContent = points.filter(function (p) { return p.type === 'cp'; }).length + ' checkpoint · tekan lama peta utk tambah';
+  wrap.querySelectorAll('.row').forEach(function (r) {
+    r.addEventListener('click', function () {
+      var p = points.find(function (x) { return x.id === r.dataset.id; });
+      if (p) { map.setView([p.lat, p.lng], Math.max(map.getZoom(), 15)); markers[p.id] && markers[p.id].openPopup(); }
+    });
+  });
+}
+
+// ---------- fit ----------
+function fitAll() {
+  var b = L.latLngBounds(points.map(function (p) { return [p.lat, p.lng]; }));
+  if (myPos) b.extend(myPos);
+  map.fitBounds(b.pad(0.15));
+}
+document.getElementById('btnFit').addEventListener('click', fitAll);
+
+// ---------- online/offline ----------
+function netUI() {
+  var off = !navigator.onLine;
+  document.getElementById('netdot').classList.toggle('off', off);
+  document.getElementById('netlabel').textContent = off ? 'Offline' : 'Online';
+}
+window.addEventListener('online', netUI); window.addEventListener('offline', netUI); netUI();
+
+// ---------- service worker (cache offline) ----------
+if ('serviceWorker' in navigator) {
+  try { navigator.serviceWorker.register('sw-jalan-lasak.js').then(function (r) { r.update(); }); } catch (e) {}
+}
+
+// ---------- init ----------
+rebuildMarkers();
+rebuildRoutes();
+fitAll();
+updateStrip();
+setInterval(updateStrip, 3000);
+</script>
+</body>
+</html>
