@@ -55,3 +55,30 @@ export const postPositions = (group, device, items) =>
 /** Command centre: every group's latest fix, plus up to `trail` recent ones. */
 export const getPositions = (key, trail = 0) =>
   call('positions' + (trail ? `?trail=${trail}` : ''), { key });
+
+/** Command centre: the SMS fallback number and/or the marshal PIN. */
+export const putSettings = (key, settings) =>
+  call('settings', { method: 'PUT', key, body: settings });
+
+/**
+ * Record groups arriving at points. Proven by the command-centre key or the
+ * marshal PIN. items: [{ group, point, at?, note? }]. Resolves to
+ * { version, saved, started } where started maps group → clock start it set.
+ */
+export async function postCheckins({ key, pin, device, items, verify = false }) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (key) headers.Authorization = 'Bearer ' + key;
+  else if (pin) headers['X-Marshal-Pin'] = pin;
+  let response;
+  try {
+    response = await fetch(BASE + 'checkins', {
+      method: 'POST', headers, body: JSON.stringify(verify ? { device, verify: true } : { device, items }), cache: 'no-store'
+    });
+  } catch {
+    throw new ApiError(0, 'Tiada talian ke pelayan.');
+  }
+  let data = null;
+  try { data = await response.json(); } catch { /* non-JSON body */ }
+  if (!response.ok) throw new ApiError(response.status, (data && data.error) || `Ralat ${response.status}`);
+  return data;
+}

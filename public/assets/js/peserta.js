@@ -2,7 +2,7 @@
    SOS, keep-screen-on. State (points, routes, groups) comes from the server
    and is cached on the phone so the map still opens without signal. */
 
-import { boot, $ } from './core.js';
+import { boot, $, groupLabel } from './core.js';
 import { getState } from './api.js';
 import { loadGroup, saveGroup, deviceId, saveState } from './store.js';
 import { askChoice, askConfirm, notify, toast } from './ui.js';
@@ -73,12 +73,41 @@ async function chooseGroup() {
 }
 
 function renderGroup() {
-  const known = group && core.state.groups.some((g) => g.id === group);
-  $('grpname').textContent = known ? groupName(group) : (group ? 'Kumpulan dipadam — pilih semula' : 'Belum dipilih');
+  const mine = core.state.groups.find((g) => g.id === group) || null;
+  const known = !!mine;
+  $('grpname').textContent = known ? mine.name : (group ? 'Kumpulan dipadam — pilih semula' : 'Belum dipilih');
   $('btnGroup').textContent = group ? 'Tukar kumpulan' : 'Pilih kumpulan';
   $('btnSend').disabled = !known;
   $('btnSOS').disabled = !known;
+  const smsNumber = (core.state.settings || {}).smsNumber;
+  $('btnSms').disabled = !known || !smsNumber;
+  $('btnSms').title = smsNumber ? 'SMS ke ' + smsNumber : 'Pusat kawalan belum tetapkan nombor SMS';
+  // ETAs in the checkpoint list become clock times once this group has set off.
+  core.setScheduleStart(mine ? mine.startedAt : null);
 }
+
+/* ── SMS fallback: works on far weaker signal than data ─────────────── */
+
+$('btnSms').addEventListener('click', async () => {
+  const smsNumber = (core.state.settings || {}).smsNumber;
+  const mine = core.state.groups.find((g) => g.id === group);
+  if (!smsNumber || !mine) return;
+  let fix = reporter.lastFix();
+  if (!fix) {
+    toast('Mencari GPS…');
+    fix = await reporter.sendNow();
+    if (!fix) {
+      notify({ title: 'GPS belum dapat', body: 'Cuba di kawasan terbuka, kemudian tekan sekali lagi.' });
+      return;
+    }
+  }
+  const index = core.state.groups.indexOf(mine);
+  const body = 'JL K' + groupLabel(mine, index) + ' ' + fix.lat.toFixed(5) + ',' + fix.lng.toFixed(5) +
+    ' ' + clock(fix.at) + (reporter.isSOS() ? ' SOS' : '');
+  // iOS wants "&body=", Android "?body=".
+  const ios = /iP(hone|ad|od)/.test(navigator.userAgent);
+  window.location.href = 'sms:' + smsNumber + (ios ? '&' : '?') + 'body=' + encodeURIComponent(body);
+});
 
 /* ── reporter ───────────────────────────────────────────────────────── */
 

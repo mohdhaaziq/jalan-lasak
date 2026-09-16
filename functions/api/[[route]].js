@@ -3,17 +3,20 @@
    Roles
    - Participant phones: read the program state, post their group's positions.
      No login; a group id plus a per-phone device id.
-   - Command centre: everything above plus editing points, routes and groups,
-     and reading positions. Proven by the CC_KEY secret sent as a Bearer token.
+   - Marshals at checkpoints: post check-ins, proven by the marshal PIN the
+     command centre set (X-Marshal-Pin header).
+   - Command centre: everything, proven by the CC_KEY secret as a Bearer token.
 
    Storage is D1 (binding DB); schema in schema.sql at the repo root.
 
    Routes
-     GET  /api/state            { version, points, routes, groups }    public
-     PUT  /api/state            { points, routes }  → { version }      CC
-     PUT  /api/groups           { groups }          → { version }      CC
-     POST /api/positions        { group, device, items[] } → { version, saved }
-     GET  /api/positions[?trail=N]   latest fix per group (+ last N)   CC
+     GET  /api/state              { version, points, routes, groups, settings }   public
+     PUT  /api/state              { points, routes }  → { version }               CC
+     PUT  /api/groups             { groups }          → { version }               CC
+     PUT  /api/settings           { smsNumber?, marshalPin? } → { version }       CC
+     POST /api/positions          { group, device, items[] } → { version, saved }
+     GET  /api/positions[?trail=N]  latest fix, check-ins and start per group     CC
+     POST /api/checkins           { device, items:[{group, point, at?, note?}] }  CC or marshal PIN
 */
 
 const DEFAULT_POINTS = [
@@ -22,9 +25,11 @@ const DEFAULT_POINTS = [
   { id: 'cp2', type: 'cp', name: 'Checkpoint 2', lat: 3.567827, lng: 101.613620 }
 ];
 
-const MAX_BATCH = 200;      // positions accepted in one POST
+const MAX_BATCH = 200;      // positions or check-ins accepted in one POST
 const MAX_TRAIL = 200;      // per-group trail points returned
 const MAX_NAME = 120;
+const MAX_NOTE = 200;
+const CLOCK_SLACK_MS = 7 * 24 * 3600 * 1000;
 
 /* ── helpers ──────────────────────────────────────────────────────────── */
 
@@ -52,30 +57,64 @@ async function readJson(request) {
 
 /** Constant-time-ish string compare; keys are short so this is enough. */
 function sameKey(a, b) {
-  if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length) return false;
+  if (typeof a !== 'string' || typeof b !== 'string' || !a || a.length !== b.length) return false;
   let diff = 0;
   for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
   return diff === 0;
 }
 
+function bearerToken(request) {
+  const header = request.headers.get('Authorization') || '';
+  return header.startsWith('Bearer ') ? header.slice(7).trim() : '';
+}
+
+function isCC(request, env) {
+  return !!env.CC_KEY && sameKey(bearerToken(request), env.CC_KEY);
+}
+
 function requireCC(request, env) {
   if (!env.CC_KEY) throw new HttpError(503, 'CC_KEY belum ditetapkan pada pelayan.');
-  const header = request.headers.get('Authorization') || '';
-  const token = header.startsWith('Bearer ') ? header.slice(7).trim() : '';
-  if (!sameKey(token, env.CC_KEY)) throw new HttpError(401, 'Kunci pusat kawalan salah.');
+  if (!isCC(request, env)) throw new HttpError(401, 'Kunci pusat kawalan salah.');
+}
+
+/** Command centre key, or the marshal PIN the command centre configured. */
+async function requireCCOrMarshal(request, env) {
+  if (isCC(request, env)) return 'cc';
+  const pin = (request.headers.get('X-Marshal-Pin') || '').trim();
+  const stored = await getMeta(env.DB, 'marshal_pin');
+  if (!stored) throw new HttpError(503, 'PIN marshal belum ditetapkan oleh pusat kawalan.');
+  if (!sameKey(pin, stored)) throw new HttpError(401, 'PIN marshal salah.');
+  return 'marshal';
 }
 
 const isId = (v) => typeof v === 'string' && /^[\w-]{1,64}$/.test(v);
 const isLat = (v) => Number.isFinite(v) && v >= -90 && v <= 90;
 const isLng = (v) => Number.isFinite(v) && v >= -180 && v <= 180;
-const cleanName = (v, fallback) => {
-  const s = typeof v === 'string' ? v.trim().slice(0, MAX_NAME) : '';
+const cleanText = (v, max, fallback = '') => {
+  const s = typeof v === 'string' ? v.trim().slice(0, max) : '';
   return s || fallback;
 };
+const cleanName = (v, fallback) => cleanText(v, MAX_NAME, fallback);
+
+/** A phone's timestamp, if it is within reason of ours; otherwise now. */
+function clientTime(value, now) {
+  return Number.isFinite(value) && Math.abs(now - value) < CLOCK_SLACK_MS ? Math.round(value) : now;
+}
+
+async function getMeta(db, key) {
+  const row = await db.prepare('SELECT value FROM meta WHERE key = ?').bind(key).first();
+  return row ? row.value : null;
+}
+
+const setMeta = (db, key, value) =>
+  db.prepare('INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
+    .bind(key, value);
+
+const delMeta = (db, key) => db.prepare('DELETE FROM meta WHERE key = ?').bind(key);
 
 async function getVersion(db) {
-  const row = await db.prepare("SELECT value FROM meta WHERE key = 'version'").first();
-  return row ? Number(row.value) : 0;
+  const v = await getMeta(db, 'version');
+  return v ? Number(v) : 0;
 }
 
 const bumpVersion = (db) =>
@@ -91,23 +130,36 @@ async function seedIfEmpty(db) {
   await db.batch(stmts);
 }
 
-/* ── handlers ─────────────────────────────────────────────────────────── */
+async function getSettings(db) {
+  const [sms, pin] = await Promise.all([getMeta(db, 'sms_number'), getMeta(db, 'marshal_pin')]);
+  return { smsNumber: sms || '', hasMarshalPin: !!pin };
+}
+
+/* ── state ────────────────────────────────────────────────────────────── */
 
 async function getState(env) {
   const db = env.DB;
   await seedIfEmpty(db);
-  const [version, points, routes, groups] = await Promise.all([
+  const [version, points, routes, groups, settings] = await Promise.all([
     getVersion(db),
-    db.prepare('SELECT id, type, name, lat, lng FROM points ORDER BY seq').all(),
+    db.prepare('SELECT id, type, name, lat, lng, eta_min FROM points ORDER BY seq').all(),
     db.prepare('SELECT id, name, latlngs FROM routes ORDER BY seq').all(),
-    db.prepare('SELECT id, name FROM groups ORDER BY seq').all()
+    db.prepare('SELECT id, name, started_at FROM groups ORDER BY seq').all(),
+    getSettings(db)
   ]);
   return json({
     version,
-    points: points.results,
+    points: points.results.map((p) => ({ ...p, etaMin: p.eta_min, eta_min: undefined })),
     routes: routes.results.map((r) => ({ ...r, latlngs: JSON.parse(r.latlngs) })),
-    groups: groups.results
+    groups: groups.results.map((g) => ({ id: g.id, name: g.name, startedAt: g.started_at })),
+    settings
   });
+}
+
+function etaValue(v, label) {
+  if (v === null || v === undefined || v === '') return null;
+  if (!Number.isFinite(v) || v < 0 || v > 24 * 60) throw new HttpError(400, `${label}: jangkaan minit tidak sah.`);
+  return Math.round(v);
 }
 
 async function putState(request, env) {
@@ -126,8 +178,9 @@ async function putState(request, env) {
     if (!p || !isId(p.id) || !isLat(p.lat) || !isLng(p.lng)) throw new HttpError(400, `Titik #${i + 1} tidak sah.`);
     if (seen.has(p.id)) throw new HttpError(400, `ID titik berulang: ${p.id}`);
     seen.add(p.id);
-    stmts.push(db.prepare('INSERT INTO points (id, type, name, lat, lng, seq) VALUES (?, ?, ?, ?, ?, ?)')
-      .bind(p.id, p.type === 'start' ? 'start' : 'cp', cleanName(p.name, 'Checkpoint'), p.lat, p.lng, i));
+    stmts.push(db.prepare('INSERT INTO points (id, type, name, lat, lng, seq, eta_min) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .bind(p.id, p.type === 'start' ? 'start' : 'cp', cleanName(p.name, 'Checkpoint'), p.lat, p.lng, i,
+        etaValue(p.etaMin, `Titik #${i + 1}`)));
   });
 
   routes.forEach((r, i) => {
@@ -145,24 +198,60 @@ async function putState(request, env) {
   return json({ version: await getVersion(db) });
 }
 
+/**
+ * Replace the group list. A group's startedAt is kept unless the request
+ * names it: absent → keep what the database has (a marshal may have set it
+ * since this client last synced), null → clear, number → set.
+ */
 async function putGroups(request, env) {
   requireCC(request, env);
   const body = await readJson(request);
   if (!Array.isArray(body.groups)) throw new HttpError(400, 'Perlukan senarai groups.');
   const db = env.DB;
+  const existing = await db.prepare('SELECT id, started_at FROM groups').all();
+  const startedBefore = new Map(existing.results.map((g) => [g.id, g.started_at]));
+
   const stmts = [db.prepare('DELETE FROM groups')];
   const seen = new Set();
+  const now = Date.now();
   body.groups.forEach((g, i) => {
     if (!g || !isId(g.id)) throw new HttpError(400, `Kumpulan #${i + 1} tidak sah.`);
     if (seen.has(g.id)) throw new HttpError(400, `ID kumpulan berulang: ${g.id}`);
     seen.add(g.id);
-    stmts.push(db.prepare('INSERT INTO groups (id, name, seq) VALUES (?, ?, ?)')
-      .bind(g.id, cleanName(g.name, 'Kumpulan ' + (i + 1)), i));
+    let startedAt;
+    if (!('startedAt' in g)) startedAt = startedBefore.get(g.id) ?? null;
+    else if (g.startedAt === null) startedAt = null;
+    else if (Number.isFinite(g.startedAt)) startedAt = clientTime(g.startedAt, now);
+    else throw new HttpError(400, `Kumpulan #${i + 1}: masa mula tidak sah.`);
+    stmts.push(db.prepare('INSERT INTO groups (id, name, seq, started_at) VALUES (?, ?, ?, ?)')
+      .bind(g.id, cleanName(g.name, 'Kumpulan ' + (i + 1)), i, startedAt));
   });
   stmts.push(bumpVersion(db));
   await db.batch(stmts);
   return json({ version: await getVersion(db) });
 }
+
+async function putSettings(request, env) {
+  requireCC(request, env);
+  const body = await readJson(request);
+  const db = env.DB;
+  const stmts = [];
+  if ('smsNumber' in body) {
+    const sms = cleanText(body.smsNumber, 32).replace(/[^\d+]/g, '');
+    stmts.push(sms ? setMeta(db, 'sms_number', sms) : delMeta(db, 'sms_number'));
+  }
+  if ('marshalPin' in body) {
+    const pin = cleanText(body.marshalPin, 32);
+    if (pin && pin.length < 4) throw new HttpError(400, 'PIN marshal sekurang-kurangnya 4 aksara.');
+    stmts.push(pin ? setMeta(db, 'marshal_pin', pin) : delMeta(db, 'marshal_pin'));
+  }
+  if (!stmts.length) throw new HttpError(400, 'Tiada tetapan diberi.');
+  stmts.push(bumpVersion(db));
+  await db.batch(stmts);
+  return json({ version: await getVersion(db), settings: await getSettings(db) });
+}
+
+/* ── positions ────────────────────────────────────────────────────────── */
 
 async function postPositions(request, env) {
   const body = await readJson(request);
@@ -177,15 +266,15 @@ async function postPositions(request, env) {
   const stmts = [];
   for (const it of items) {
     if (!it || !isLat(it.lat) || !isLng(it.lng)) continue;
-    // Trust the phone's clock only within reason; otherwise use ours.
-    const at = Number.isFinite(it.at) && Math.abs(now - it.at) < 7 * 24 * 3600 * 1000 ? Math.round(it.at) : now;
     stmts.push(db.prepare(
-      'INSERT INTO positions (group_id, device, lat, lng, acc, battery, sos, recorded_at, received_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      'INSERT INTO positions (group_id, device, lat, lng, acc, battery, sos, source, recorded_at, received_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
     ).bind(
       body.group, body.device, it.lat, it.lng,
       Number.isFinite(it.acc) ? Math.round(it.acc) : null,
       Number.isFinite(it.battery) ? Math.max(0, Math.min(1, it.battery)) : null,
-      it.sos ? 1 : 0, at, now
+      it.sos ? 1 : 0,
+      it.source === 'sms' ? 'sms' : 'app',
+      clientTime(it.at, now), now
     ));
   }
   if (stmts.length) await db.batch(stmts);
@@ -199,8 +288,8 @@ async function getPositions(request, env, url) {
 
   // Latest fix per group, joined so deleted groups disappear.
   const latest = await db.prepare(`
-    SELECT g.id AS group_id, g.name, g.seq,
-           p.lat, p.lng, p.acc, p.battery, p.sos, p.recorded_at, p.received_at, p.device
+    SELECT g.id AS group_id, g.name, g.seq, g.started_at,
+           p.lat, p.lng, p.acc, p.battery, p.sos, p.source, p.recorded_at, p.received_at, p.device
     FROM groups g
     LEFT JOIN positions p ON p.id = (
       SELECT id FROM positions WHERE group_id = g.id ORDER BY recorded_at DESC, id DESC LIMIT 1
@@ -211,12 +300,23 @@ async function getPositions(request, env, url) {
   const groups = latest.results.map((r) => ({
     id: r.group_id,
     name: r.name,
+    startedAt: r.started_at,
     last: r.lat === null ? null : {
-      lat: r.lat, lng: r.lng, acc: r.acc, battery: r.battery, sos: !!r.sos,
+      lat: r.lat, lng: r.lng, acc: r.acc, battery: r.battery, sos: !!r.sos, source: r.source,
       at: r.recorded_at, receivedAt: r.received_at, device: r.device
     },
+    checkins: [],
     trail: []
   }));
+  const byGroup = new Map(groups.map((g) => [g.id, g]));
+
+  const checkins = await db.prepare(
+    'SELECT group_id, point_id, source, note, recorded_at FROM checkins ORDER BY recorded_at'
+  ).all();
+  for (const c of checkins.results) {
+    const g = byGroup.get(c.group_id);
+    if (g) g.checkins.push({ point: c.point_id, at: c.recorded_at, source: c.source, note: c.note || '' });
+  }
 
   if (trail > 0) {
     const rows = await db.prepare(`
@@ -228,7 +328,6 @@ async function getPositions(request, env, url) {
       )
       ORDER BY group_id, recorded_at
     `).bind(trail).all();
-    const byGroup = new Map(groups.map((g) => [g.id, g]));
     for (const r of rows.results) {
       const g = byGroup.get(r.group_id);
       if (g) g.trail.push([r.lat, r.lng, r.recorded_at, r.sos ? 1 : 0]);
@@ -236,6 +335,47 @@ async function getPositions(request, env, url) {
   }
 
   return json({ now: Date.now(), groups });
+}
+
+/* ── check-ins ────────────────────────────────────────────────────────── */
+
+async function postCheckins(request, env) {
+  const who = await requireCCOrMarshal(request, env);
+  const body = await readJson(request);
+  if (body.verify) return json({ ok: true, role: who });   // a marshal phone checking its PIN
+  const items = Array.isArray(body.items) ? body.items.slice(-MAX_BATCH) : [];
+  if (!items.length) throw new HttpError(400, 'Tiada daftar masuk diberi.');
+  const device = isId(body.device) ? body.device : null;
+
+  const db = env.DB;
+  const [groups, points] = await Promise.all([
+    db.prepare('SELECT id, started_at FROM groups').all(),
+    db.prepare('SELECT id, type FROM points').all()
+  ]);
+  const groupStart = new Map(groups.results.map((g) => [g.id, g.started_at]));
+  const pointType = new Map(points.results.map((p) => [p.id, p.type]));
+
+  const now = Date.now();
+  const stmts = [];
+  const started = {};
+  for (const it of items) {
+    if (!it || !isId(it.group) || !isId(it.point)) continue;
+    if (!groupStart.has(it.group)) throw new HttpError(404, 'Kumpulan tidak wujud lagi.');
+    if (!pointType.has(it.point)) throw new HttpError(404, 'Titik tidak wujud lagi.');
+    const at = clientTime(it.at, now);
+    stmts.push(db.prepare(
+      'INSERT INTO checkins (group_id, point_id, source, device, note, recorded_at, received_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).bind(it.group, it.point, who, device, cleanText(it.note, MAX_NOTE) || null, at, now));
+    // Setting off from the start is what starts a group's clock.
+    if (pointType.get(it.point) === 'start' && groupStart.get(it.group) === null && !(it.group in started)) {
+      started[it.group] = at;
+      stmts.push(db.prepare('UPDATE groups SET started_at = ? WHERE id = ? AND started_at IS NULL').bind(at, it.group));
+    }
+  }
+  if (!stmts.length) throw new HttpError(400, 'Tiada daftar masuk yang sah.');
+  if (Object.keys(started).length) stmts.push(bumpVersion(db));
+  await db.batch(stmts);
+  return json({ version: await getVersion(db), saved: items.length, started });
 }
 
 /* ── router ───────────────────────────────────────────────────────────── */
@@ -251,8 +391,10 @@ export async function onRequest({ request, env }) {
     if (route === 'state' && method === 'GET') return await getState(env);
     if (route === 'state' && method === 'PUT') return await putState(request, env);
     if (route === 'groups' && method === 'PUT') return await putGroups(request, env);
+    if (route === 'settings' && method === 'PUT') return await putSettings(request, env);
     if (route === 'positions' && method === 'POST') return await postPositions(request, env);
     if (route === 'positions' && method === 'GET') return await getPositions(request, env, url);
+    if (route === 'checkins' && method === 'POST') return await postCheckins(request, env);
     if (route === 'ping') return json({ ok: true, now: Date.now() });
 
     return fail(404, 'Laluan API tidak wujud.');

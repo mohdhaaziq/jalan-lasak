@@ -179,6 +179,7 @@ export function createReporter({ getGroup, getDevice, onFix, onStatus, onGroupMi
     sendNow: () => sample({ force: true }),
     isRunning: () => timer !== null,
     isSOS: () => sos,
+    lastFix: () => lastFix,
     queued: () => queue.length
   };
 }

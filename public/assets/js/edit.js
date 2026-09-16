@@ -74,6 +74,32 @@ export function mountEditing(core) {
     core.updateStrip();
   }
 
+  async function setEta(id) {
+    const point = state.points.find((p) => p.id === id);
+    if (!point) return;
+    const answer = await askText({
+      title: 'Jangkaan tiba — ' + point.name,
+      body: 'Minit selepas kumpulan bertolak dari MULA. Kosongkan untuk buang dari jadual.',
+      value: Number.isFinite(point.etaMin) ? String(point.etaMin) : '',
+      placeholder: 'cth. 90',
+      label: 'Minit',
+      inputMode: 'numeric'
+    });
+    if (answer === null) return;
+    if (answer === '') {
+      point.etaMin = null;
+    } else {
+      const minutes = parseInt(answer, 10);
+      if (!Number.isFinite(minutes) || minutes < 0) {
+        notify({ title: 'Nilai tidak sah', body: 'Masukkan bilangan minit, contohnya 90.' });
+        return;
+      }
+      point.etaMin = minutes;
+    }
+    core.changed();
+    core.rerender();
+  }
+
   /* ── draw a suggested route ─────────────────────────────────────────── */
 
   const btnDraw = $('btnDraw');
@@ -174,6 +200,7 @@ export function mountEditing(core) {
 
   core.hooks.rename = renamePoint;
   core.hooks.remove = deletePoint;
+  core.hooks.eta = setEta;
   core.hooks.removeRoute = deleteRoute;
   core.hooks.mapClick = (latlng) => {
     if (drawMode) {

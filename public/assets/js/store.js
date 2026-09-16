@@ -11,6 +11,9 @@ const KEY_GROUP = 'jl_group_v1';     // this phone's group id (participant)
 const KEY_DEVICE = 'jl_device_v1';   // this phone's random id
 const KEY_QUEUE = 'jl_posq_v1';      // positions not yet delivered
 const KEY_CCKEY = 'jl_cckey_v1';     // command-centre key, on that device only
+const KEY_MARSHAL_PIN = 'jl_mpin_v1';    // marshal PIN, on the marshal's phone
+const KEY_MARSHAL_POINT = 'jl_mpoint_v1'; // which checkpoint this marshal phone stands at
+const KEY_CHECKIN_QUEUE = 'jl_ciq_v1';   // check-ins not yet delivered
 
 export const DEFAULT_POINTS = [
   { id: 'start', type: 'start', name: 'MULA — Parking Stesen KTM Kuala Kubu Bharu', lat: 3.556879, lng: 101.632263 },
@@ -96,14 +99,15 @@ export function loadState() {
       version: Number(cached.version) || 0,
       points: cached.points.filter(isPoint),
       routes: Array.isArray(cached.routes) ? cached.routes : [],
-      groups: Array.isArray(cached.groups) ? cached.groups : []
+      groups: Array.isArray(cached.groups) ? cached.groups : [],
+      settings: cached.settings && typeof cached.settings === 'object' ? cached.settings : {}
     };
   }
-  return { version: 0, points: loadPoints(), routes: loadRoutes(), groups: [] };
+  return { version: 0, points: loadPoints(), routes: loadRoutes(), groups: [], settings: {} };
 }
 
 export const saveState = (state) => write(KEY_STATE, {
-  version: state.version, points: state.points, routes: state.routes, groups: state.groups
+  version: state.version, points: state.points, routes: state.routes, groups: state.groups, settings: state.settings
 });
 
 /* ── participant identity ─────────────────────────────────────────────── */
@@ -151,3 +155,30 @@ export function saveCCKey(key) {
     else localStorage.removeItem(KEY_CCKEY);
   } catch { /* storage unavailable */ }
 }
+
+/* ── marshal phone ────────────────────────────────────────────────────── */
+
+export function loadMarshal() {
+  try {
+    return { pin: localStorage.getItem(KEY_MARSHAL_PIN) || '', point: localStorage.getItem(KEY_MARSHAL_POINT) || '' };
+  } catch {
+    return { pin: '', point: '' };
+  }
+}
+
+export function saveMarshal({ pin, point }) {
+  try {
+    if (pin !== undefined) {
+      if (pin) localStorage.setItem(KEY_MARSHAL_PIN, pin);
+      else localStorage.removeItem(KEY_MARSHAL_PIN);
+    }
+    if (point !== undefined) localStorage.setItem(KEY_MARSHAL_POINT, point || '');
+  } catch { /* storage unavailable */ }
+}
+
+export function loadCheckinQueue() {
+  const q = read(KEY_CHECKIN_QUEUE, []);
+  return Array.isArray(q) ? q : [];
+}
+
+export const saveCheckinQueue = (queue) => write(KEY_CHECKIN_QUEUE, queue);

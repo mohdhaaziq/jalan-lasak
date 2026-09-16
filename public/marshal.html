@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="description" content="Marshal checkpoint Jalan Lasak — catat setiap kumpulan yang tiba, walaupun tanpa isyarat.">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#201e1d">
+<title>Jalan Lasak — Marshal</title>
+<link rel="icon" href="assets/icons/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="assets/icons/icon-192.png">
+<link rel="stylesheet" href="assets/css/modernist.css">
+<link rel="stylesheet" href="assets/css/app.css">
+<script src="assets/js/marshal.js" type="module"></script>
+</head>
+<body class="page">
+<div id="app" class="marshal">
+
+  <header id="topbar">
+    <div>
+      <div class="brand">JALAN LASAK</div>
+      <div class="sub">Kuala Kubu Bharu · Marshal</div>
+    </div>
+    <div id="netdot" role="status" aria-live="polite">
+      <span class="dot" aria-hidden="true"></span><span id="netlabel">Online</span>
+    </div>
+  </header>
+
+  <main id="mbody">
+    <div class="mhead">
+      <div>
+        <div class="t">Checkpoint</div>
+        <div class="v" id="pointname">Belum dipilih</div>
+      </div>
+      <button type="button" class="jl-btn" id="btnPoint">Pilih checkpoint</button>
+    </div>
+    <div class="stat pad" id="mstat"></div>
+    <div class="sect-head">Kumpulan tiba</div>
+    <div id="mlist"></div>
+    <div class="foot"><a href="./">Paparan peserta →</a></div>
+  </main>
+
+</div>
+<div id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

@@ -9,6 +9,7 @@ import { distM, bearing, fmtDist, pathKm } from './geo.js';
 import { DEFAULT_POINTS, loadState, saveState, loadTarget, saveTarget, loadPrefs, savePrefs } from './store.js';
 import { notify, toast, askConfirm } from './ui.js';
 import { planTiles, precacheTiles, cachedTileCount, clearTiles, approxSize } from './offline.js';
+import { etaLabel } from './schedule.js';
 
 export const $ = (id) => document.getElementById(id);
 export const el = (tag, className, text) => {
@@ -50,6 +51,15 @@ const CONTOUR = { ...LAYERS.topo, opacity: 0.45 };
 export const isStart = (p) => p.type === 'start';
 export const coordText = (p) => p.lat.toFixed(6) + ', ' + p.lng.toFixed(6);
 
+/** Short label for a group: the number in its name if it has one, else initials. */
+export function groupLabel(group, index = 0) {
+  const m = /\d+/.exec(group.name || '');
+  if (m) return m[0];
+  const words = (group.name || '').trim().split(/\s+/).filter(Boolean);
+  const initials = words.slice(0, 2).map((w) => w[0]).join('').toUpperCase();
+  return initials || String(index + 1);
+}
+
 export function boot({ editable = false } = {}) {
   const L = window.L;
   if (!L) throw new Error('Leaflet tidak dimuatkan — semak vendor/leaflet/leaflet.js');
@@ -69,7 +79,8 @@ export function boot({ editable = false } = {}) {
 
   const markers = {};
   const routeLayers = {};
-  const hooks = { change: null, rename: null, remove: null, mapClick: null, mapHold: null };
+  const hooks = { change: null, rename: null, remove: null, eta: null, mapClick: null, mapHold: null };
+  let scheduleStart = null;   // this group's start time, for showing ETAs as clock times
 
   const findPoint = (id) => state.points.find((p) => p.id === id);
   const startPoint = () => state.points.find(isStart);
@@ -170,7 +181,10 @@ export function boot({ editable = false } = {}) {
     actions.append(action('Sasar', true, () => setTarget(point.id)));
     if (editable) {
       actions.append(action('Nama', false, () => hooks.rename && hooks.rename(point.id)));
-      if (!isStart(point)) actions.append(action('Padam', false, () => hooks.remove && hooks.remove(point.id)));
+      if (!isStart(point)) {
+        actions.append(action('Masa', false, () => hooks.eta && hooks.eta(point.id)));
+        actions.append(action('Padam', false, () => hooks.remove && hooks.remove(point.id)));
+      }
     }
     wrap.append(actions);
     return wrap;
@@ -382,7 +396,8 @@ export function boot({ editable = false } = {}) {
 
       const text = el('span');
       const name = el('span', 'nm', point.name + (point.id === targetId ? ' ◀' : ''));
-      text.append(name, el('br'), el('span', 'co', coordText(point)));
+      const eta = etaLabel(point, scheduleStart);
+      text.append(name, el('br'), el('span', 'co', coordText(point) + (eta ? ' · dijangka ' + eta : '')));
       row.append(text);
 
       const dist = el('span', 'dist');
@@ -604,6 +619,7 @@ export function boot({ editable = false } = {}) {
     state.points = Array.isArray(next.points) ? next.points : state.points;
     state.routes = Array.isArray(next.routes) ? next.routes : state.routes;
     state.groups = Array.isArray(next.groups) ? next.groups : state.groups;
+    state.settings = next.settings && typeof next.settings === 'object' ? next.settings : state.settings;
     if (!findPoint(targetId)) {
       const start = startPoint();
       targetId = start ? start.id : '';
@@ -629,6 +645,7 @@ export function boot({ editable = false } = {}) {
     setMyPos,
     changed,
     applyState,
+    setScheduleStart: (ms) => { scheduleStart = Number.isFinite(ms) ? ms : null; renderPointList(); },
     rerender,
     rebuildMarkers,
     rebuildRoutes,

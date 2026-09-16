@@ -339,3 +339,27 @@ a:hover { color: var(--color-accent); }
 .jl-grp.warn { border-color: var(--color-accent-500); }
 .jl-grp.bad { border-color: var(--color-accent); color: var(--color-accent); }
 .jl-grp.sos { background: var(--color-accent); border-color: var(--color-accent); color: var(--jl-on-ink); animation: jl-pulse 1.2s infinite; }
+
+/* ══ schedule, check-ins, marshal ════════════════════════════════════════ */
+
+.row .grow { flex: 1; min-width: 0; }
+.row .sched { font-size: 10.5px; letter-spacing: .02em; color: var(--jl-muted); }
+.row .sched.warn { color: var(--color-accent-700); font-weight: 600; }
+.row .sched.bad { color: var(--color-accent); font-weight: 700; }
+.row.pos.late-bad { box-shadow: inset 4px 0 0 var(--color-accent); }
+.row.pos.sel { box-shadow: inset 4px 0 0 var(--jl-ink); }
+.row .rowacts { display: flex; flex-direction: column; gap: 4px; flex: none; }
+.stat.pad { padding: 0 14px 12px; }
+
+/* — marshal page: a list, not a map — */
+body.page { overflow: auto; }
+#app.marshal { position: static; min-height: 100%; display: flex; flex-direction: column; background: var(--color-neutral-100); }
+#mbody { flex: 1; overflow-y: auto; }
+.mhead { display: flex; align-items: center; gap: 12px; padding: 14px; border-bottom: 2px solid var(--jl-rule); }
+.mhead .t { font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--jl-muted); }
+.mhead .v { font-family: var(--font-heading); font-weight: 800; font-size: 17px; }
+.mhead .jl-btn { margin-left: auto; flex: none; }
+.marshal .row.grp { min-height: 64px; cursor: default; }
+.marshal .row.grp.done { background: var(--color-bg); }
+.marshal .row.grp .jl-btn { margin-left: auto; }
+.jl-btn.big { min-height: 48px; padding: 8px 18px; font-size: 13px; }
