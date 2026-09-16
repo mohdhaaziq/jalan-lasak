@@ -10,7 +10,7 @@ const el = (tag, className, text) => {
   return node;
 };
 
-function openDialog({ title, body, input, actions }) {
+function openDialog({ title, body, input, options, actions }) {
   return new Promise((resolve) => {
     const previous = document.activeElement;
     const backdrop = el('div', 'dialog-backdrop jl-backdrop');
@@ -28,12 +28,21 @@ function openDialog({ title, body, input, actions }) {
     let field = null;
     if (input) {
       field = el('input', 'input');
-      field.type = 'text';
+      field.type = input.type || 'text';
+      if (input.inputMode) field.inputMode = input.inputMode;
+      field.autocomplete = 'off';
       field.value = input.value || '';
       field.placeholder = input.placeholder || '';
       field.setAttribute('aria-label', input.label || title);
       field.enterKeyHint = 'done';
       dialog.append(field);
+    }
+
+    let choices = null;
+    if (options && options.length) {
+      choices = el('div', 'dialog-choices');
+      choices.setAttribute('role', 'listbox');
+      dialog.append(choices);
     }
 
     const bar = el('div', 'dialog-actions');
@@ -43,6 +52,16 @@ function openDialog({ title, body, input, actions }) {
       if (previous && previous.focus) previous.focus();
       resolve(result);
     };
+
+    if (choices) {
+      options.forEach((opt) => {
+        const button = el('button', 'jl-btn choice' + (opt.selected ? ' acc' : ''), opt.label);
+        button.type = 'button';
+        button.setAttribute('role', 'option');
+        button.addEventListener('click', () => close(opt.value));
+        choices.append(button);
+      });
+    }
 
     actions.forEach((action) => {
       const button = el('button', 'jl-btn' + (action.accent ? ' acc' : ''), action.label);
@@ -58,7 +77,7 @@ function openDialog({ title, body, input, actions }) {
     const onKey = (event) => {
       if (event.key === 'Escape') {
         event.preventDefault();
-        close(null);
+        if (actions.length || !choices) close(null);
       } else if (event.key === 'Enter' && field && document.activeElement === field) {
         event.preventDefault();
         const primary = actions.find((a) => a.accent) || actions[0];
@@ -88,6 +107,8 @@ function openDialog({ title, body, input, actions }) {
     if (field) {
       field.focus();
       field.select();
+    } else if (choices && choices.firstChild) {
+      choices.firstChild.focus();
     } else {
       (actions.find((a) => a.accent) || actions[0]).node.focus();
     }
@@ -95,11 +116,11 @@ function openDialog({ title, body, input, actions }) {
 }
 
 /** Ask for a line of text. Resolves to the trimmed string, or null if cancelled. */
-export function askText({ title, body, value = '', placeholder = '', okLabel = 'Simpan', cancelLabel = 'Batal', label }) {
+export function askText({ title, body, value = '', placeholder = '', okLabel = 'Simpan', cancelLabel = 'Batal', label, type, inputMode }) {
   return openDialog({
     title,
     body,
-    input: { value, placeholder, label },
+    input: { value, placeholder, label, type, inputMode },
     actions: [
       { label: okLabel, value: 'INPUT', accent: true },
       { label: cancelLabel, value: null }
@@ -118,6 +139,19 @@ export async function askConfirm({ title, body, okLabel = 'Teruskan', cancelLabe
     ]
   });
   return answer === true;
+}
+
+/**
+ * Pick one of several options ([{ value, label, selected }]).
+ * Resolves to the chosen value, or null if dismissed (only when cancellable).
+ */
+export function askChoice({ title, body, options, cancelLabel = null }) {
+  return openDialog({
+    title,
+    body,
+    options,
+    actions: cancelLabel ? [{ label: cancelLabel, value: null }] : []
+  });
 }
 
 /** Tell the user something they must acknowledge. */

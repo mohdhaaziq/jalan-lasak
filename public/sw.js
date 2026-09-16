@@ -1,15 +1,16 @@
 /* Jalan Lasak service worker.
 
    Three caches, three jobs:
-   - SHELL      the app itself. Precached on install so a first-run offline
-                launch works, then network-first so a deployed change is
-                picked up on the next visit and the cache is only a fallback.
+   - SHELL      the app itself, plus the last GET /api/state. Precached on
+                install so a first-run offline launch works, then network-first
+                so a deployed change is picked up on the next visit and the
+                cache is only a fallback.
    - TILES_SAVED map tiles the user deliberately saved for an area. Never
                 evicted here — only the "Kosongkan" button clears them.
    - TILES_AUTO  tiles that happened to be drawn while browsing. Cache-first
                 and trimmed, so casual panning cannot fill the device. */
 
-const VERSION = 'v3';
+const VERSION = 'v4';
 const SHELL = `jl-shell-${VERSION}`;
 const TILES_SAVED = 'jl-tiles-v1';
 const TILES_AUTO = 'jl-tiles-auto-v1';
@@ -20,10 +21,16 @@ const TILE_HOSTS = ['tile.openstreetmap.org', 'opentopomap.org', 'arcgisonline.c
 const SHELL_FILES = [
   './',
   'index.html',
+  'pusat.html',
   'manifest.webmanifest',
   'assets/css/modernist.css',
   'assets/css/app.css',
-  'assets/js/app.js',
+  'assets/js/core.js',
+  'assets/js/edit.js',
+  'assets/js/peserta.js',
+  'assets/js/pusat.js',
+  'assets/js/api.js',
+  'assets/js/reporter.js',
   'assets/js/geo.js',
   'assets/js/store.js',
   'assets/js/ui.js',
@@ -83,8 +90,9 @@ async function shellResponse(request) {
     if (response && response.ok) cache.put(request, response.clone());
     return response;
   } catch {
+    const page = new URL(request.url).pathname.includes('pusat') ? 'pusat.html' : 'index.html';
     const hit = await cache.match(request) ||
-      (request.mode === 'navigate' ? await cache.match('index.html') : null);
+      (request.mode === 'navigate' ? await cache.match(page) : null);
     return hit || new Response('Tiada talian.', {
       status: 504,
       headers: { 'Content-Type': 'text/plain; charset=utf-8' }
@@ -128,6 +136,12 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(request.url);
   if (url.origin === self.location.origin) {
+    if (url.pathname.includes('/api/')) {
+      // Only the shared program state is worth a stale copy: it lets a phone
+      // with no signal still open the map. Everything else is live-only.
+      if (url.pathname.endsWith('/api/state')) event.respondWith(shellResponse(request));
+      return;
+    }
     event.respondWith(shellResponse(request));
     return;
   }

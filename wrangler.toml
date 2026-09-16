@@ -1,0 +1,15 @@
+# Cloudflare Pages project: static site from public/, API from functions/.
+name = "jalan-lasak"
+compatibility_date = "2025-10-01"
+pages_build_output_dir = "public"
+
+# The D1 database. Create it once with `npx wrangler d1 create jalan-lasak`
+# and paste the database_id it prints here.
+[[d1_databases]]
+binding = "DB"
+database_name = "jalan-lasak"
+database_id = "REPLACE_WITH_YOUR_DATABASE_ID"
+
+# The command-centre key is a secret, never in this file:
+#   npx wrangler pages secret put CC_KEY
+# For local dev put CC_KEY=... in a .dev.vars file (git-ignored).

@@ -18,7 +18,7 @@ INK = (32, 30, 29, 255)        # --color-text
 ACCENT = (236, 48, 19, 255)    # --color-accent
 GROUND = (248, 244, 244, 255)  # --color-neutral-100
 
-OUT = pathlib.Path(__file__).resolve().parent.parent / "assets" / "icons"
+OUT = pathlib.Path(__file__).resolve().parent.parent / "public" / "assets" / "icons"
 
 # The trail, in a 1000-unit square, drawn from the bottom left upwards.
 TRAIL = [(165, 835), (350, 585), (560, 545), (835, 225)]

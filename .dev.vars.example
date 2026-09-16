@@ -1,0 +1,2 @@
+# Local development secrets — copied by `wrangler pages dev`. Never commit .dev.vars.
+CC_KEY=tukar-kunci-ini
