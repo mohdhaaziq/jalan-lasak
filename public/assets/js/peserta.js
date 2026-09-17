@@ -479,6 +479,10 @@ btnSOS.addEventListener('click', async () => {
   syncSOS();
 });
 
+/* ── bottom tab bar ─────────────────────────────────────────────────── */
+
+mountTabs({ map: core.map, storageKey: 'jl_tab_peserta', defaultPane: 'kumpulan' });
+
 /* ── keep the screen on ─────────────────────────────────────────────── */
 
 const btnWake = $('btnWake');
