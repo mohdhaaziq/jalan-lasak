@@ -12,6 +12,8 @@
   --jl-rule: color-mix(in srgb, var(--color-text) 12%, transparent);
   --jl-map-bg: color-mix(in srgb, var(--color-text) 16%, transparent);
   --jl-ok: #4caf50;        /* online indicator — status green, outside the mono palette */
+  --sat: env(safe-area-inset-top, 0px);   /* read back by tabs.js to size the iOS home-screen app */
+  --sab: 0px;                             /* bottom inset iOS hides in that mode; set by tabs.js */
   --jl-gps: #2a78d6;       /* the GPS dot is blue by map convention, not by brand */
 }
 
@@ -159,7 +161,7 @@ a:hover { color: var(--color-accent); }
 #tabbar {
   flex: none; display: flex;
   background: var(--jl-ink);
-  padding-bottom: env(safe-area-inset-bottom);
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), var(--sab));
 }
 #tabbar [role="tab"] {
   flex: 1; min-height: 56px; padding: 6px 4px 8px;
@@ -324,7 +326,7 @@ a:hover { color: var(--color-accent); }
 }
 #toast.on { display: block; }
 /* Above the tab bar on the participant page, so a notice never hides the tabs. */
-body:has(#tabbar) #toast { bottom: calc(66px + env(safe-area-inset-bottom)); }
+body:has(#tabbar) #toast { bottom: calc(66px + max(env(safe-area-inset-bottom, 0px), var(--sab))); }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; }

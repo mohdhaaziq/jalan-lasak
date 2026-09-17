@@ -5,12 +5,31 @@
 import { $ } from './core.js';
 
 /**
- * Keep --app-h at the window's real height. iOS standalone can report a
- * stale viewport at launch and only correct it on a later resize; following
- * the resize keeps the tab bar on the screen's bottom edge.
+ * Keep --app-h at the height the app must fill.
+ *
+ * As a home-screen app on iOS with a translucent status bar, WebKit slides
+ * the document up under the status bar but does not make the viewport any
+ * taller: innerHeight comes up short by the top and bottom insets, a blank
+ * band is left under the page, and env(safe-area-inset-bottom) reads 0. So
+ * in that mode the app is sized to the whole screen and the bottom inset is
+ * worked out from what is missing (--sab), for the tab bar's padding.
+ * Everywhere else the window height is the truth.
  */
 function fitViewport() {
-  document.documentElement.style.setProperty('--app-h', window.innerHeight + 'px');
+  const root = document.documentElement;
+  let h = window.innerHeight;
+  let sab = 0;
+  if (navigator.standalone === true) {
+    const portrait = window.innerHeight >= window.innerWidth;
+    const full = portrait ? Math.max(screen.height, screen.width) : Math.min(screen.height, screen.width);
+    const top = parseFloat(getComputedStyle(root).getPropertyValue('--sat')) || 0;
+    if (full > h) {
+      sab = Math.max(0, Math.min(60, full - h - top));
+      h = full;
+    }
+  }
+  root.style.setProperty('--app-h', h + 'px');
+  root.style.setProperty('--sab', sab + 'px');
 }
 
 export function mountTabs({ map, storageKey, defaultPane }) {
