@@ -314,9 +314,8 @@ async function getState(request, env) {
     id: r.id, name: r.name, latlngs: JSON.parse(r.latlngs), from: r.from_id || null, to: r.to_id || null
   }));
   const area = programArea(all, routeList);
-  // A route is sent to a participant only once the point it ends at has been
-  // revealed, so a line never gives a hidden checkpoint away. Routes drawn
-  // before endpoints existed have no `to` and are sent as before.
+  // Routes are a command-centre tool (pace estimates, briefing marshals);
+  // participant phones never receive them.
   let routesOut = routeList;
   // Only the command centre and marshals ever see codes; a participant's
   // phone gets the hidden points locked behind them instead.
@@ -328,8 +327,7 @@ async function getState(request, env) {
     const pr = await progressFor(db, who.group, all);
     points = pr.revealed.map(strip);
     progress = { reached: pr.reached, more: pr.more };
-    const shown = new Set(points.map((p) => p.id));
-    routesOut = routeList.filter((r) => !r.to || (shown.has(r.to) && (!r.from || shown.has(r.from))));
+    routesOut = [];
     locked = [];
     for (let i = pr.revealed.length; i < all.length; i++) {
       const prev = all[i - 1];
@@ -339,7 +337,7 @@ async function getState(request, env) {
   } else if (who.role === 'public') {
     points = all.filter((p) => p.type === 'start').map(strip);
     progress = { reached: [], more: all.length > points.length };
-    routesOut = routeList.filter((r) => !r.to);
+    routesOut = [];
   } else {
     points = all;
   }

@@ -5,7 +5,7 @@ peranan:
 
 | | **Peserta** (`/`) | **Marshal** (`/marshal.html`, PIN) | **Pusat kawalan** (`/pusat.html`, kunci) |
 | --- | --- | --- | --- |
-| Checkpoint & laluan | **didedahkan satu persatu** — CP seterusnya muncul bila tiba di CP sebelumnya | semua | tambah, seret, namakan, jadual; lukis laluan |
+| Checkpoint & laluan | checkpoint **didedahkan satu persatu**; laluan tidak dipaparkan | semua checkpoint dan laluan | tambah, seret, namakan, jadual; lukis laluan; anggaran tiba ikut kelajuan |
 | Kedudukan | telefon kumpulan hantar sendiri (masuk dengan **PIN kumpulan**) | peta kedudukan semasa semua kumpulan, jarak dari CP-nya | peta + senarai semua kumpulan, jejak, "kali terakhir dilihat"; PIN setiap kumpulan |
 | Daftar masuk | — | catat setiap kumpulan yang tiba di CP-nya | catat sendiri (dari radio), lihat semua |
 | Jadual | lihat jangkaan tiba | — | tetapkan; amaran bila kumpulan **lewat** |
@@ -74,12 +74,16 @@ checkpoint seterusnya dibuka **serta-merta tanpa talian**, dan catatan
 "tiba" beratur dalam telefon lalu dihantar (`source: 'qr'`) bila ada
 isyarat. Kod juga boleh dibaca melalui walkie-talkie atau dibalas oleh pusat
 kawalan melalui SMS. Jangan letak semua kod pada satu helai di trek.
-Pangkalan data lama: jalankan `migrations/0002-point-code.sql` sekali. Laluan cadangan **bermula di MULA atau checkpoint
-dan berakhir di checkpoint** (dipilih semasa melukis; titik pertama dan
-terakhir ditambat, nama automatik "MULA → Checkpoint 1"). Peserta hanya
-menerima laluan yang checkpoint tamatnya sudah didedahkan, jadi garisan
-tidak mendedahkan checkpoint tersembunyi. Laluan lama tanpa titik tamat
-dihantar seperti dahulu. Pangkalan data lama: jalankan juga
+Pangkalan data lama: jalankan `migrations/0002-point-code.sql` sekali. Laluan cadangan **tidak dihantar kepada peserta** —
+ia alat pusat kawalan. Setiap laluan bermula di MULA atau checkpoint dan
+berakhir di checkpoint (dipilih semasa melukis; titik pertama dan terakhir
+ditambat, nama automatik "MULA → Checkpoint 1"). Pusat kawalan dan marshal
+menggunakannya untuk **anggaran tiba ikut kelajuan sebenar**: jarak baki
+diukur di sepanjang laluan ke checkpoint seterusnya (dari unjuran kedudukan
+kumpulan ke laluan; garis lurus jika tiada laluan atau kumpulan > 300 m
+darinya), dibahagi kelajuan purata 20 minit terakhir dari jejak kumpulan —
+"≈ 14 min ke Checkpoint 2 · 1.2 km ikut laluan · 4.8 km/j", atau "Berhenti"
+bila hampir tidak bergerak. Pangkalan data lama: jalankan juga
 `migrations/0003-route-endpoints.sql` sekali.
 
 ### Kawasan tiada isyarat — apa yang menjaga keselamatan
@@ -219,7 +223,7 @@ public/                 laman statik (Cloudflare Pages)
   assets/js/peserta.js  peranan peserta: kumpulan, pelapor, SOS, wake lock
   assets/js/pusat.js    peranan pusat kawalan: kunci, kumpulan, jadual, kedudukan, amaran
   assets/js/marshal.js  peranan marshal: PIN, checkpoint, daftar masuk + giliran offline
-  assets/js/schedule.js jadual: sampai/belum, lewat berapa
+  assets/js/schedule.js jadual: sampai/belum, lewat berapa; anggaran tiba ikut kelajuan
   assets/js/reporter.js pelapor kedudukan + giliran offline
   assets/js/api.js      pembalut HTTP untuk /api/*
   assets/js/store.js    simpanan localStorage
@@ -259,7 +263,7 @@ Melayu dan dipaparkan terus dalam app.
 
 | Cache | Isi | Dibuang bila |
 | --- | --- | --- |
-| `jl-shell-v14` | fail app + salinan terakhir `/api/state` | versi baharu digunakan |
+| `jl-shell-v15` | fail app + salinan terakhir `/api/state` | versi baharu digunakan |
 | `jl-tiles-v1` | tile yang **sengaja** disimpan | hanya melalui butang *Kosongkan* |
 | `jl-tiles-auto-v1` | tile yang terpapar semasa melayari | automatik, melebihi 1500 tile |
 

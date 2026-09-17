@@ -10,6 +10,7 @@ import { loadState, saveState, loadMarshal, saveMarshal, loadCheckinQueue, saveC
 import { askText, askChoice, askConfirm, notify, toast } from './ui.js';
 import { LAYERS, isStart, groupLabel } from './core.js';
 import { distM, fmtDist } from './geo.js';
+import { scheduleFor, paceEstimate, paceLabel } from './schedule.js';
 
 const POSITIONS_POLL_MS = 30 * 1000;
 const STALE_WARN_MS = 10 * 60 * 1000;
@@ -155,7 +156,7 @@ async function pollPositions() {
   if (polling || !pin || !navigator.onLine) return;
   polling = true;
   try {
-    const data = await getPositions(null, 0, { pin });
+    const data = await getPositions(null, 30, { pin });   // a short trail, for the pace estimate
     serverNow = data.now;
     const first = !positions.length && data.groups.some((g) => g.last);
     positions = data.groups;
@@ -364,6 +365,12 @@ function render() {
       : 'Belum ada kedudukan';
     text.append(el('span', 'nm', (last && last.sos ? 'SOS — ' : '') + g.name), el('br'),
       el('span', 'co', (at ? 'Tiba ' + clock(at) : 'Belum tiba') + ' · ' + where));
+    // How long until they get here, at the pace they are actually walking.
+    const pg = positions.find((x) => x.id === g.id);
+    if (pg && pg.last && !at) {
+      const est = paceEstimate(pg, state.points, state.routes || [], scheduleFor(pg, state.points, serverNow), serverNow, p);
+      if (est) text.append(el('br'), el('span', 'pace' + (est.moving ? '' : ' still'), paceLabel(est, () => 'sini')));
+    }
     row.append(text);
     const button = el('button', 'jl-btn' + (at ? ' sm' : ' acc big'), at ? 'Lagi' : 'Tiba');
     button.type = 'button';

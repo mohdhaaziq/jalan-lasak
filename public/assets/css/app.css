@@ -241,6 +241,9 @@ a:hover { color: var(--color-accent); }
 .check.on .box::after { content: ''; width: 8px; height: 8px; background: var(--jl-on-ink); }
 #contourrow { border-bottom: 2px solid var(--jl-rule); }
 
+.row .pace { font-size: 10.5px; letter-spacing: .02em; color: var(--jl-ink); font-weight: 600; }
+.row .pace.still { color: var(--jl-muted); font-weight: 400; }
+
 /* ── section heads ───────────────────────────────────────────────────── */
 .sect-head {
   display: flex; align-items: center; gap: 10px;

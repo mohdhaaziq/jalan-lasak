@@ -9,7 +9,7 @@ import { getState, putState, putGroups, putSettings, getPositions, postPositions
 import { loadCCKey, saveCCKey, saveState } from './store.js';
 import { askText, askChoice, askConfirm, notify, toast } from './ui.js';
 import { distM, fmtDist } from './geo.js';
-import { scheduleFor, lateness, etaLabel } from './schedule.js';
+import { scheduleFor, lateness, etaLabel, paceEstimate, paceLabel } from './schedule.js';
 import { mountTabs } from './tabs.js';
 
 const POSITIONS_POLL_MS = 15 * 1000;
@@ -603,6 +603,9 @@ function renderPositions() {
     }
     const sched = scheduleLine(g, status);
     text.append(el('span', 'sched ' + sched.cls, sched.text));
+    // The plan says when they should arrive; their own pace says when they will.
+    const est = paceEstimate(g, state.points, state.routes, status, serverNow);
+    if (est) text.append(el('br'), el('span', 'pace' + (est.moving ? '' : ' still'), paceLabel(est, pointName)));
     row.append(text);
 
     if (g.last) {

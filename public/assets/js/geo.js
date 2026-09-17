@@ -21,6 +21,36 @@ export function bearing(a, b) {
   return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
 }
 
+/**
+ * Project `pos` onto a [[lat, lng], …] path and measure what is left of the
+ * path from there to its end. Returns { remainingM, offM } where offM is how
+ * far `pos` sits from the path — a large value means the group is not on it.
+ */
+export function remainingAlong(latlngs, pos) {
+  if (!Array.isArray(latlngs) || latlngs.length < 2) return null;
+  const kx = 111320 * Math.cos(pos.lat * toRad);
+  const ky = 110540;
+  const xy = (ll) => [(ll[1] - pos.lng) * kx, (ll[0] - pos.lat) * ky];
+  let best = null;
+  for (let i = 0; i < latlngs.length - 1; i++) {
+    const [ax, ay] = xy(latlngs[i]);
+    const [bx, by] = xy(latlngs[i + 1]);
+    const dx = bx - ax;
+    const dy = by - ay;
+    const len2 = dx * dx + dy * dy;
+    const t = len2 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / len2)) : 0;
+    const px = ax + t * dx;
+    const py = ay + t * dy;
+    const off = Math.hypot(px, py);
+    if (!best || off < best.off) best = { i, t, off, toEnd: Math.hypot(bx - px, by - py) };
+  }
+  let remaining = best.toEnd;
+  for (let j = best.i + 1; j < latlngs.length - 1; j++) {
+    remaining += distM({ lat: latlngs[j][0], lng: latlngs[j][1] }, { lat: latlngs[j + 1][0], lng: latlngs[j + 1][1] });
+  }
+  return { remainingM: remaining, offM: best.off };
+}
+
 /** Metres as "1.23 km" or "840 m". */
 export function fmtDist(m) {
   return m >= 1000 ? (m / 1000).toFixed(2) + ' km' : Math.round(m) + ' m';

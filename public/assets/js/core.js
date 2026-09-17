@@ -444,6 +444,7 @@ export function boot({ editable = false } = {}) {
 
   function renderRouteList() {
     const wrap = $('routelist');
+    if (!wrap) return;   // the participant page has no route list
     wrap.textContent = '';
 
     if (!state.routes.length) {
