@@ -30,12 +30,15 @@ CREATE TABLE IF NOT EXISTS routes (
 
 -- One phone per group reports positions under a group id.
 -- started_at (ms epoch) is when the group set off; the schedule counts from it.
+-- pin is the group's own random 6-digit login, minted by the server.
 CREATE TABLE IF NOT EXISTS groups (
   id         TEXT PRIMARY KEY,
   name       TEXT NOT NULL,
   seq        INTEGER NOT NULL,
-  started_at INTEGER
+  started_at INTEGER,
+  pin        TEXT
 );
+CREATE UNIQUE INDEX IF NOT EXISTS groups_pin ON groups (pin);
 
 -- Every reported fix, kept for the whole event so the trail can be replayed.
 CREATE TABLE IF NOT EXISTS positions (

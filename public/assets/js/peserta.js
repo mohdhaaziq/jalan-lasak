@@ -3,9 +3,9 @@
    and is cached on the phone so the map still opens without signal. */
 
 import { boot, $, groupLabel } from './core.js';
-import { getState } from './api.js';
-import { loadGroup, saveGroup, deviceId, saveState } from './store.js';
-import { askChoice, askConfirm, notify, toast } from './ui.js';
+import { getState, loginGroup } from './api.js';
+import { loadGroup, saveGroup, loadGroupPin, saveGroupPin, deviceId, saveState } from './store.js';
+import { askText, askConfirm, notify, toast } from './ui.js';
 import { createReporter } from './reporter.js';
 
 const STATE_POLL_MS = 5 * 60 * 1000;
@@ -13,6 +13,7 @@ const STATE_POLL_MS = 5 * 60 * 1000;
 const core = boot({ editable: false });
 const device = deviceId();
 let group = loadGroup();
+let groupPin = loadGroupPin();
 let syncing = false;
 
 const groupName = (id) => {
@@ -49,34 +50,68 @@ async function syncState() {
 
 /* ── group identity ─────────────────────────────────────────────────── */
 
+/**
+ * Log in with the group's PIN (6 digits, given by the command centre to
+ * each group leader). The phone keeps the PIN so it stays logged in, and
+ * sends it with every position so no other phone can report as this group.
+ */
 async function chooseGroup() {
-  const groups = core.state.groups;
-  if (!groups.length) {
-    await notify({
-      title: 'Tiada kumpulan lagi',
-      body: 'Pusat kawalan belum menetapkan senarai kumpulan. Buka semula sebentar lagi.'
+  for (;;) {
+    const entered = await askText({
+      title: 'Masuk kumpulan',
+      body: 'Masukkan PIN 6 digit kumpulan anda yang diberi oleh pusat kawalan. Kedudukan telefon ini akan dihantar sebagai kumpulan itu.',
+      placeholder: '123456',
+      label: 'PIN kumpulan',
+      inputMode: 'numeric',
+      okLabel: 'Masuk',
+      cancelLabel: group ? 'Batal' : 'Nanti'
     });
+    if (entered === null) return;
+    const pin = entered.replace(/\D/g, '');
+    if (pin.length !== 6) {
+      await notify({ title: 'PIN tidak lengkap', body: 'PIN kumpulan ialah 6 digit.' });
+      continue;
+    }
+    toast('Menyemak PIN…');
+    let found;
+    try {
+      found = await loginGroup(pin);
+    } catch (err) {
+      await notify({
+        title: err.status === 401 ? 'PIN salah' : 'Tidak dapat masuk',
+        body: err.status === 401 ? 'Semak semula PIN dengan pusat kawalan.' : err.message + ' Perlukan talian untuk masuk kali pertama.'
+      });
+      if (err.status === 401) continue;
+      return;
+    }
+    if (group && group !== found.id) reporter.stop();
+    group = found.id;
+    groupPin = pin;
+    saveGroup(group);
+    saveGroupPin(pin);
+    // The list on this phone may predate the group; make sure it is named.
+    if (!core.state.groups.some((g) => g.id === group)) await syncState();
+    renderGroup();
+    reporter.start();
+    toast('Telefon ini kini ' + (groupName(group) || found.name) + '.');
     return;
   }
-  const id = await askChoice({
-    title: 'Kumpulan anda',
-    body: 'Pilih kumpulan yang telefon ini wakili. Kedudukan telefon ini akan dihantar ke pusat kawalan.',
-    options: groups.map((g) => ({ value: g.id, label: g.name, selected: g.id === group })),
-    cancelLabel: group ? 'Batal' : null
-  });
-  if (!id) return;
-  group = id;
-  saveGroup(id);
+}
+
+function logoutGroup() {
+  reporter.stop();
+  group = '';
+  groupPin = '';
+  saveGroup('');
+  saveGroupPin('');
   renderGroup();
-  reporter.start();
-  toast('Telefon ini kini ' + groupName(id) + '.');
 }
 
 function renderGroup() {
   const mine = core.state.groups.find((g) => g.id === group) || null;
-  const known = !!mine;
-  $('grpname').textContent = known ? mine.name : (group ? 'Kumpulan dipadam — pilih semula' : 'Belum dipilih');
-  $('btnGroup').textContent = group ? 'Tukar kumpulan' : 'Pilih kumpulan';
+  const known = !!mine && !!groupPin;
+  $('grpname').textContent = known ? mine.name : (group ? 'Masuk semula dengan PIN' : 'Belum masuk');
+  $('btnGroup').textContent = known ? 'Tukar kumpulan' : 'Masuk dengan PIN';
   $('btnSend').disabled = !known;
   $('btnSOS').disabled = !known;
   const smsNumber = (core.state.settings || {}).smsNumber;
@@ -113,6 +148,7 @@ $('btnSms').addEventListener('click', async () => {
 
 const reporter = createReporter({
   getGroup: () => group,
+  getPin: () => groupPin,
   getDevice: () => device,
   onFix: (fix) => core.setMyPos(fix, fix.acc),
   onStatus: (s) => {
@@ -126,13 +162,11 @@ const reporter = createReporter({
     syncSOS(s.sos);
   },
   onGroupMissing: async () => {
-    group = '';
-    saveGroup('');
-    // The list we hold still names the deleted group; fetch the current one
-    // before asking, so the operator's change is what the leader sees.
+    // Deleted, or its PIN was reset, at the command centre.
+    logoutGroup();
     await syncState();
-    renderGroup();
-    chooseGroup();
+    notify({ title: 'Masuk semula', body: 'Kumpulan ini dipadam atau PIN-nya ditukar oleh pusat kawalan. Minta PIN baharu dan masuk semula.' })
+      .then(chooseGroup);
   },
   onVersion: (version) => {
     if (version !== core.state.version) syncState();
@@ -224,7 +258,7 @@ syncWake();
 
 renderGroup();
 syncState().then(() => {
-  const known = group && core.state.groups.some((g) => g.id === group);
+  const known = group && groupPin && core.state.groups.some((g) => g.id === group);
   if (known) reporter.start();
   else chooseGroup();
 });

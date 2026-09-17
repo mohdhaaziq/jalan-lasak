@@ -44,13 +44,21 @@ export const getState = () => call('state');
 export const putState = (key, { points, routes }) =>
   call('state', { method: 'PUT', key, body: { points, routes } });
 
-/** Command centre: replace the list of groups. Resolves to { version }. */
+/** Command centre: replace the list of groups. Resolves to { version, groups: [{ id, pin }] }. */
 export const putGroups = (key, groups) =>
   call('groups', { method: 'PUT', key, body: { groups } });
 
-/** Participant: deliver a batch of fixes. Resolves to { version, saved }. */
-export const postPositions = (group, device, items) =>
-  call('positions', { method: 'POST', body: { group, device, items } });
+/**
+ * Deliver a batch of fixes for a group. A participant phone proves itself
+ * with the group's PIN; the command centre (typing in an SMS) with its key.
+ * Resolves to { version, saved }.
+ */
+export const postPositions = (group, device, items, { pin, key } = {}) =>
+  call('positions', { method: 'POST', key, body: { group, pin, device, items } });
+
+/** Participant: log in with the group's PIN. Resolves to { id, name, startedAt }. */
+export const loginGroup = (pin) =>
+  call('groups/login', { method: 'POST', body: { pin } });
 
 /** Command centre: every group's latest fix, plus up to `trail` recent ones. */
 export const getPositions = (key, trail = 0) =>

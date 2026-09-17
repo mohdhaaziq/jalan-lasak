@@ -23,7 +23,8 @@ function openDialog({ title, body, input, options, actions }) {
     dialog.setAttribute('aria-labelledby', heading.id);
     dialog.append(heading);
 
-    if (body) dialog.append(el('div', 'dialog-body', body));
+    // body: plain text, or an element the caller built (e.g. a large PIN).
+    if (body) dialog.append(body instanceof Node ? body : el('div', 'dialog-body', body));
 
     let field = null;
     if (input) {

@@ -2,7 +2,10 @@
 
    Roles
    - Participant phones: read the program state, post their group's positions.
-     No login; a group id plus a per-phone device id.
+     Each group has its own random 6-digit PIN, minted by the server when the
+     command centre creates the group. The phone logs in with the PIN alone
+     (POST /api/groups/login) and sends it with every batch of positions, so
+     one phone cannot report as another group.
    - Marshals at checkpoints: post check-ins, proven by the marshal PIN the
      command centre set (X-Marshal-Pin header).
    - Command centre: everything, proven by the CC_KEY secret as a Bearer token.
@@ -12,9 +15,10 @@
    Routes
      GET  /api/state              { version, points, routes, groups, settings }   public
      PUT  /api/state              { points, routes }  → { version }               CC
-     PUT  /api/groups             { groups }          → { version }               CC
+     PUT  /api/groups             { groups }  → { version, groups:[{id,pin}] }    CC
+     POST /api/groups/login       { pin }     → { id, name, startedAt }          public
      PUT  /api/settings           { smsNumber?, marshalPin? } → { version }       CC
-     POST /api/positions          { group, device, items[] } → { version, saved }
+     POST /api/positions          { group, pin, device, items[] } → { version, saved }   group PIN or CC
      GET  /api/positions[?trail=N]  latest fix, check-ins and start per group     CC
      POST /api/checkins           { device, items:[{group, point, at?, note?}] }  CC or marshal PIN
 */
@@ -95,6 +99,22 @@ const cleanText = (v, max, fallback = '') => {
   return s || fallback;
 };
 const cleanName = (v, fallback) => cleanText(v, MAX_NAME, fallback);
+
+const PIN_DIGITS = 6;
+const isPin = (v) => typeof v === 'string' && new RegExp(`^\\d{${PIN_DIGITS}}$`).test(v);
+
+/** A random PIN not in `taken`. Adds it to `taken` so one batch stays unique. */
+function newPin(taken) {
+  const buf = new Uint32Array(1);
+  for (;;) {
+    crypto.getRandomValues(buf);
+    const pin = String(buf[0] % 10 ** PIN_DIGITS).padStart(PIN_DIGITS, '0');
+    if (!taken.has(pin)) {
+      taken.add(pin);
+      return pin;
+    }
+  }
+}
 
 /** A phone's timestamp, if it is within reason of ours; otherwise now. */
 function clientTime(value, now) {
@@ -202,17 +222,23 @@ async function putState(request, env) {
  * Replace the group list. A group's startedAt is kept unless the request
  * names it: absent → keep what the database has (a marshal may have set it
  * since this client last synced), null → clear, number → set.
+ * Each group's PIN is kept too; a new group gets a fresh one, and
+ * `resetPin: true` mints a new one for an existing group (e.g. a leaked PIN).
+ * The response carries every group's PIN so the command centre can show it.
  */
 async function putGroups(request, env) {
   requireCC(request, env);
   const body = await readJson(request);
   if (!Array.isArray(body.groups)) throw new HttpError(400, 'Perlukan senarai groups.');
   const db = env.DB;
-  const existing = await db.prepare('SELECT id, started_at FROM groups').all();
+  const existing = await db.prepare('SELECT id, started_at, pin FROM groups').all();
   const startedBefore = new Map(existing.results.map((g) => [g.id, g.started_at]));
+  const pinBefore = new Map(existing.results.map((g) => [g.id, g.pin]));
 
   const stmts = [db.prepare('DELETE FROM groups')];
   const seen = new Set();
+  const taken = new Set();
+  const pins = [];
   const now = Date.now();
   body.groups.forEach((g, i) => {
     if (!g || !isId(g.id)) throw new HttpError(400, `Kumpulan #${i + 1} tidak sah.`);
@@ -223,12 +249,35 @@ async function putGroups(request, env) {
     else if (g.startedAt === null) startedAt = null;
     else if (Number.isFinite(g.startedAt)) startedAt = clientTime(g.startedAt, now);
     else throw new HttpError(400, `Kumpulan #${i + 1}: masa mula tidak sah.`);
-    stmts.push(db.prepare('INSERT INTO groups (id, name, seq, started_at) VALUES (?, ?, ?, ?)')
-      .bind(g.id, cleanName(g.name, 'Kumpulan ' + (i + 1)), i, startedAt));
+    const kept = g.resetPin ? null : pinBefore.get(g.id);
+    const pin = isPin(kept) && !taken.has(kept) ? (taken.add(kept), kept) : newPin(taken);
+    pins.push({ id: g.id, pin });
+    stmts.push(db.prepare('INSERT INTO groups (id, name, seq, started_at, pin) VALUES (?, ?, ?, ?, ?)')
+      .bind(g.id, cleanName(g.name, 'Kumpulan ' + (i + 1)), i, startedAt, pin));
   });
   stmts.push(bumpVersion(db));
   await db.batch(stmts);
-  return json({ version: await getVersion(db) });
+  return json({ version: await getVersion(db), groups: pins });
+}
+
+/** Groups created before PINs existed get one the first time the command centre looks. */
+async function ensurePins(db) {
+  const rows = await db.prepare('SELECT id, pin FROM groups').all();
+  const missing = rows.results.filter((g) => !isPin(g.pin));
+  if (!missing.length) return;
+  const taken = new Set(rows.results.map((g) => g.pin).filter(isPin));
+  await db.batch(missing.map((g) =>
+    db.prepare('UPDATE groups SET pin = ? WHERE id = ?').bind(newPin(taken), g.id)));
+}
+
+/** A participant phone logs in with its group's PIN alone. */
+async function loginGroup(request, env) {
+  const body = await readJson(request);
+  const pin = cleanText(body.pin, 16).replace(/\D/g, '');
+  if (!isPin(pin)) throw new HttpError(400, `PIN kumpulan ialah ${PIN_DIGITS} digit.`);
+  const g = await env.DB.prepare('SELECT id, name, started_at FROM groups WHERE pin = ?').bind(pin).first();
+  if (!g) throw new HttpError(401, 'PIN kumpulan salah.');
+  return json({ id: g.id, name: g.name, startedAt: g.started_at });
 }
 
 async function putSettings(request, env) {
@@ -259,8 +308,13 @@ async function postPositions(request, env) {
   const items = Array.isArray(body.items) ? body.items.slice(-MAX_BATCH) : [];
 
   const db = env.DB;
-  const group = await db.prepare('SELECT id FROM groups WHERE id = ?').bind(body.group).first();
-  if (!group) throw new HttpError(404, 'Kumpulan tidak wujud lagi — pilih semula.');
+  const group = await db.prepare('SELECT id, pin FROM groups WHERE id = ?').bind(body.group).first();
+  if (!group) throw new HttpError(404, 'Kumpulan tidak wujud lagi — masuk semula.');
+  // The phone proves it is this group with the group's PIN; the command centre
+  // (typing in an SMS) proves itself with its key instead.
+  if (!isCC(request, env) && !(isPin(group.pin) && sameKey(String(body.pin || ''), group.pin))) {
+    throw new HttpError(401, 'PIN kumpulan salah — masuk semula.');
+  }
 
   const now = Date.now();
   const stmts = [];
@@ -284,11 +338,12 @@ async function postPositions(request, env) {
 async function getPositions(request, env, url) {
   requireCC(request, env);
   const db = env.DB;
+  await ensurePins(db);
   const trail = Math.min(MAX_TRAIL, Math.max(0, parseInt(url.searchParams.get('trail') || '0', 10) || 0));
 
   // Latest fix per group, joined so deleted groups disappear.
   const latest = await db.prepare(`
-    SELECT g.id AS group_id, g.name, g.seq, g.started_at,
+    SELECT g.id AS group_id, g.name, g.seq, g.started_at, g.pin,
            p.lat, p.lng, p.acc, p.battery, p.sos, p.source, p.recorded_at, p.received_at, p.device
     FROM groups g
     LEFT JOIN positions p ON p.id = (
@@ -301,6 +356,7 @@ async function getPositions(request, env, url) {
     id: r.group_id,
     name: r.name,
     startedAt: r.started_at,
+    pin: r.pin,
     last: r.lat === null ? null : {
       lat: r.lat, lng: r.lng, acc: r.acc, battery: r.battery, sos: !!r.sos, source: r.source,
       at: r.recorded_at, receivedAt: r.received_at, device: r.device
@@ -391,6 +447,7 @@ export async function onRequest({ request, env }) {
     if (route === 'state' && method === 'GET') return await getState(env);
     if (route === 'state' && method === 'PUT') return await putState(request, env);
     if (route === 'groups' && method === 'PUT') return await putGroups(request, env);
+    if (route === 'groups/login' && method === 'POST') return await loginGroup(request, env);
     if (route === 'settings' && method === 'PUT') return await putSettings(request, env);
     if (route === 'positions' && method === 'POST') return await postPositions(request, env);
     if (route === 'positions' && method === 'GET') return await getPositions(request, env, url);

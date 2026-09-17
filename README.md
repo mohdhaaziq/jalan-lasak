@@ -6,15 +6,17 @@ peranan:
 | | **Peserta** (`/`) | **Marshal** (`/marshal.html`, PIN) | **Pusat kawalan** (`/pusat.html`, kunci) |
 | --- | --- | --- | --- |
 | Checkpoint & laluan | lihat sahaja — kemas kini automatik | — | tambah, seret, namakan, jadual; lukis laluan |
-| Kedudukan | telefon kumpulan hantar sendiri | — | peta + senarai semua kumpulan, jejak, "kali terakhir dilihat" |
+| Kedudukan | telefon kumpulan hantar sendiri (masuk dengan **PIN kumpulan**) | — | peta + senarai semua kumpulan, jejak, "kali terakhir dilihat"; PIN setiap kumpulan |
 | Daftar masuk | — | catat setiap kumpulan yang tiba di CP-nya | catat sendiri (dari radio), lihat semua |
 | Jadual | lihat jangkaan tiba | — | tetapkan; amaran bila kumpulan **lewat** |
 | Kecemasan | butang **SOS**, sandaran **SMS** | — | amaran merah, bunyi & getar; masuk SMS secara manual |
 | Peta offline | ya — simpan kawasan sebelum keluar liputan | tak perlu peta | ya |
 
-Satu telefon setiap kumpulan: ketua kumpulan buka app, pilih kumpulannya
-sekali, dan telefon itu menghantar kedudukan ke pusat kawalan selagi app
-dibuka. Satu telefon marshal di setiap checkpoint mencatat kumpulan yang
+Satu telefon setiap kumpulan: ketua kumpulan buka app, masuk sekali dengan
+**PIN 6 digit kumpulannya** (dijana rawak oleh pelayan bila pusat kawalan
+menambah kumpulan), dan telefon itu menghantar kedudukan ke pusat kawalan
+selagi app dibuka. PIN dihantar bersama setiap kedudukan, jadi telefon lain
+tidak boleh melapor sebagai kumpulan itu. Satu telefon marshal di setiap checkpoint mencatat kumpulan yang
 tiba — pengesahan yang tidak bergantung pada GPS mahupun isyarat telefon
 peserta.
 
@@ -133,12 +135,15 @@ directory `public`. Binding dan secret ditetapkan sekali dalam tetapan projek.
 1. Buka `/pusat.html`, masukkan `CC_KEY`.
 2. **Tetapan** — nombor telefon pusat kawalan untuk SMS, dan PIN marshal.
 3. **Senarai kumpulan → Tambah kumpulan** — satu untuk setiap telefon ketua.
+   PIN kumpulan dipaparkan serta-merta; beri kepada ketua kumpulan itu sahaja.
+   Butang *PIN* pada setiap baris memaparkan semula atau menjana PIN baharu
+   (PIN lama terus tidak sah).
 4. Betulkan checkpoint (seret), tetapkan **Masa** (jangkaan minit dari mula)
    pada setiap checkpoint, lukis laluan cadangan.
 5. Setiap marshal buka `/marshal.html` di telefonnya semasa ada talian,
    masukkan PIN, pilih checkpoint-nya.
 6. Setiap ketua kumpulan buka `/` di telefonnya semasa masih ada talian,
-   pilih kumpulannya, tekan **Simpan kawasan ini** untuk peta offline, dan
+   masuk dengan PIN kumpulannya, tekan **Simpan kawasan ini** untuk peta offline, dan
    **Kekalkan skrin hidup**. Tambah ke skrin utama (*Add to Home Screen*).
 7. Bila kumpulan bertolak: marshal di MULA tekan *Tiba* untuk kumpulan itu
    (mula jam kumpulan), atau pusat kawalan tekan *Mula* / *Mula semua*.
@@ -192,21 +197,24 @@ design/                 bundle serahan Claude Design (rujukan)
 | --- | --- | --- | --- |
 | GET | `/api/state` | semua | checkpoint (+ jadual), laluan, kumpulan (+ masa mula), tetapan, versi |
 | PUT | `/api/state` | kunci | ganti checkpoint + laluan |
-| PUT | `/api/groups` | kunci | ganti senarai kumpulan; masa mula dikekalkan jika tidak dihantar |
+| PUT | `/api/groups` | kunci | ganti senarai kumpulan; masa mula dan PIN dikekalkan jika tidak dihantar, `resetPin: true` jana PIN baharu; pulang PIN setiap kumpulan |
+| POST | `/api/groups/login` | telefon | `{ pin }` → kumpulan yang memiliki PIN itu |
 | PUT | `/api/settings` | kunci | nombor SMS, PIN marshal |
-| POST | `/api/positions` | telefon | hantar sekumpulan kedudukan (`source: 'sms'` untuk yang ditaip) |
-| GET | `/api/positions?trail=N` | kunci | kedudukan terkini, daftar masuk dan masa mula setiap kumpulan + N jejak |
+| POST | `/api/positions` | telefon (PIN kumpulan) atau kunci | hantar sekumpulan kedudukan (`source: 'sms'` untuk yang ditaip) |
+| GET | `/api/positions?trail=N` | kunci | kedudukan terkini, daftar masuk, masa mula dan PIN setiap kumpulan + N jejak |
 | POST | `/api/checkins` | kunci **atau** PIN | catat kumpulan tiba di titik; tiba di MULA memulakan jam kumpulan |
 
 Kunci dihantar sebagai `Authorization: Bearer <CC_KEY>`; PIN marshal sebagai
-`X-Marshal-Pin`. Semua ralat pulang sebagai `{ "error": "…" }` dalam Bahasa
+`X-Marshal-Pin`; PIN kumpulan dalam badan `POST /api/positions` sebagai `pin`.
+Pangkalan data yang dibuat sebelum PIN kumpulan wujud: jalankan
+`migrations/0001-group-pin.sql` sekali. Semua ralat pulang sebagai `{ "error": "…" }` dalam Bahasa
 Melayu dan dipaparkan terus dalam app.
 
 ### Cache dalam telefon
 
 | Cache | Isi | Dibuang bila |
 | --- | --- | --- |
-| `jl-shell-v5` | fail app + salinan terakhir `/api/state` | versi baharu digunakan |
+| `jl-shell-v6` | fail app + salinan terakhir `/api/state` | versi baharu digunakan |
 | `jl-tiles-v1` | tile yang **sengaja** disimpan | hanya melalui butang *Kosongkan* |
 | `jl-tiles-auto-v1` | tile yang terpapar semasa melayari | automatik, melebihi 1500 tile |
 

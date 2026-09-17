@@ -27,7 +27,7 @@ export const MOVED_M = 30;
 const QUEUE_LIMIT = 500;
 const BATCH = 200;
 
-export function createReporter({ getGroup, getDevice, onFix, onStatus, onGroupMissing, onVersion }) {
+export function createReporter({ getGroup, getPin, getDevice, onFix, onStatus, onGroupMissing, onVersion }) {
   let queue = loadQueue();
   let timer = null;
   let sos = false;
@@ -111,6 +111,7 @@ export function createReporter({ getGroup, getDevice, onFix, onStatus, onGroupMi
   async function flush() {
     if (flushing || !queue.length) return;
     const group = getGroup();
+    const pin = getPin ? getPin() : '';
     const device = getDevice();
     if (!group || !device) return;
     if (!navigator.onLine) {
@@ -122,7 +123,7 @@ export function createReporter({ getGroup, getDevice, onFix, onStatus, onGroupMi
     try {
       while (queue.length) {
         const items = queue.slice(0, BATCH);
-        const result = await postPositions(group, device, items);
+        const result = await postPositions(group, device, items, { pin });
         queue = queue.slice(items.length);
         saveQueue(queue);
         lastDelivered = Date.now();
@@ -130,8 +131,9 @@ export function createReporter({ getGroup, getDevice, onFix, onStatus, onGroupMi
         if (onVersion && typeof result.version === 'number') onVersion(result.version);
       }
     } catch (err) {
-      if (err instanceof ApiError && err.status === 404) {
-        // The group was deleted at the command centre; fixes for it are useless.
+      if (err instanceof ApiError && (err.status === 404 || err.status === 401)) {
+        // The group was deleted, or its PIN was reset, at the command centre;
+        // fixes under this identity are useless. The phone must log in again.
         queue = [];
         saveQueue(queue);
         lastError = err.message;

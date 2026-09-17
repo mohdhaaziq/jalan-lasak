@@ -8,7 +8,7 @@ pages_build_output_dir = "public"
 [[d1_databases]]
 binding = "DB"
 database_name = "jalan-lasak"
-database_id = "REPLACE_WITH_YOUR_DATABASE_ID"
+database_id = "d9b8aac9-ba36-4103-b747-db796ce42b54"
 
 # The command-centre key is a secret, never in this file:
 #   npx wrangler pages secret put CC_KEY

@@ -21,7 +21,8 @@ mountEditing(core);
 const { L, map, state } = core;
 
 let key = loadCCKey();
-let positions = [];          // [{ id, name, startedAt, last, checkins, trail }]
+let positions = [];          // [{ id, name, startedAt, pin, last, checkins, trail }]
+const pins = {};             // group id → its login PIN, as the server reports it
 let serverNow = Date.now();
 let selectedGroup = null;
 const groupMarkers = {};
@@ -145,32 +146,65 @@ async function pullState() {
 /**
  * Send the group list. Only `starts` (id → ms | null) carries a start time;
  * every other group is sent without one so the server keeps what a marshal
- * may have set since this page last synced.
+ * may have set since this page last synced. Ids in `resetPins` get a fresh
+ * login PIN. The server answers with every group's PIN. Resolves to true
+ * when the save went through.
  */
-async function saveGroups(starts = {}) {
-  const payload = state.groups.map((g) => (g.id in starts
-    ? { id: g.id, name: g.name, startedAt: starts[g.id] }
-    : { id: g.id, name: g.name }));
+async function saveGroups(starts = {}, resetPins = []) {
+  const payload = state.groups.map((g) => {
+    const item = { id: g.id, name: g.name };
+    if (g.id in starts) item.startedAt = starts[g.id];
+    if (resetPins.includes(g.id)) item.resetPin = true;
+    return item;
+  });
+  let ok = false;
   try {
-    const { version } = await withKey(() => putGroups(key, payload));
+    const { version, groups } = await withKey(() => putGroups(key, payload));
     state.version = version;
     for (const g of state.groups) if (g.id in starts) g.startedAt = starts[g.id];
+    for (const g of groups || []) pins[g.id] = g.pin;
     saveState(state);
     setSync('ok', 'Disimpan ' + clock(Date.now()));
+    ok = true;
   } catch (err) {
     setSync('bad', 'Kumpulan belum disimpan — ' + err.message);
   }
   renderGroups();
   await pollPositions();
+  return ok;
+}
+
+/** Show a group's PIN the way the leader must type it. */
+function showPin(g, intro) {
+  const body = el('div', 'dialog-body');
+  body.append(
+    el('div', null, (intro ? intro + ' ' : '') + 'Ketua kumpulan masukkan PIN ini di app peserta:'),
+    el('div', 'pin-big', pins[g.id] || '—'),
+    el('div', null, 'PIN ini hanya untuk kumpulan ini. Jangan kongsi dengan kumpulan lain.')
+  );
+  return notify({ title: 'PIN ' + g.name, body, okLabel: 'Tutup' });
 }
 
 $('btnAddGroup').addEventListener('click', async () => {
   const suggested = 'Kumpulan ' + (state.groups.length + 1);
   const name = await askText({ title: 'Kumpulan baharu', value: suggested, label: 'Nama kumpulan', okLabel: 'Tambah' });
   if (name === null) return;
-  state.groups.push({ id: 'k_' + Date.now().toString(36), name: name || suggested, startedAt: null });
-  await saveGroups();
+  const g = { id: 'k_' + Date.now().toString(36), name: name || suggested, startedAt: null };
+  state.groups.push(g);
+  if (await saveGroups()) await showPin(g, 'Kumpulan ditambah.');
 });
+
+async function resetPin(id) {
+  const g = state.groups.find((x) => x.id === id);
+  if (!g) return;
+  const ok = await askConfirm({
+    title: 'PIN baharu untuk ' + g.name + '?',
+    body: 'PIN lama tidak sah serta-merta — telefon kumpulan ini perlu masuk semula dengan PIN baharu.',
+    okLabel: 'Jana PIN baharu'
+  });
+  if (!ok) return;
+  if (await saveGroups({}, [id])) await showPin(g, 'PIN baharu dijana.');
+}
 
 async function renameGroup(id) {
   const g = state.groups.find((x) => x.id === id);
@@ -186,7 +220,7 @@ async function deleteGroup(id) {
   if (!g) return;
   const ok = await askConfirm({
     title: 'Padam kumpulan?',
-    body: g.name + ' — telefon kumpulan ini akan diminta pilih semula, dan kedudukannya tidak lagi dipaparkan.',
+    body: g.name + ' — telefon kumpulan ini akan diminta masuk semula, dan kedudukannya tidak lagi dipaparkan.',
     okLabel: 'Padam'
   });
   if (!ok) return;
@@ -234,15 +268,33 @@ function renderGroups() {
     row.append(el('span', 'badge outline', groupLabel(g, i)));
     const text = el('span');
     text.append(el('span', 'nm', g.name), el('br'),
-      el('span', 'co', Number.isFinite(g.startedAt) ? 'Bertolak ' + clock(g.startedAt) : 'Belum bertolak'));
+      el('span', 'co', (Number.isFinite(g.startedAt) ? 'Bertolak ' + clock(g.startedAt) : 'Belum bertolak') +
+        ' · PIN ' + (pins[g.id] || '…')));
     row.append(text);
+    const pin = el('button', 'jl-btn sm', 'PIN');
+    pin.type = 'button';
+    pin.title = 'Papar atau jana semula PIN kumpulan';
+    pin.addEventListener('click', async () => {
+      if (!pins[g.id]) await pollPositions();
+      const action = await askChoice({
+        title: 'PIN ' + g.name,
+        body: 'PIN semasa: ' + (pins[g.id] || '—'),
+        options: [
+          { value: 'show', label: 'Papar untuk ketua kumpulan' },
+          { value: 'reset', label: 'Jana PIN baharu' }
+        ],
+        cancelLabel: 'Tutup'
+      });
+      if (action === 'show') showPin(g, '');
+      else if (action === 'reset') resetPin(g.id);
+    });
     const rename = el('button', 'jl-btn sm', 'Nama');
     rename.type = 'button';
     rename.addEventListener('click', () => renameGroup(g.id));
     const del = el('button', 'jl-btn sm del', 'Padam');
     del.type = 'button';
     del.addEventListener('click', () => deleteGroup(g.id));
-    row.append(rename, del);
+    row.append(pin, rename, del);
     wrap.append(row);
   });
   const s = state.settings || {};
@@ -358,7 +410,8 @@ $('btnSmsIn').addEventListener('click', async () => {
     if (!groupId) return;
   }
   try {
-    await postPositions(groupId, 'cc', [{ lat: parsed.lat, lng: parsed.lng, sos: parsed.sos, source: 'sms', at: Date.now() }]);
+    await withKey(() => postPositions(groupId, 'cc',
+      [{ lat: parsed.lat, lng: parsed.lng, sos: parsed.sos, source: 'sms', at: Date.now() }], { key }));
     toast('Kedudukan SMS dicatat' + (parsed.sos ? ' — SOS.' : '.'));
     await pollPositions();
   } catch (err) {
@@ -614,10 +667,13 @@ async function pollPositions() {
     serverNow = data.now;
     positions = data.groups;
     // Start times may have been set by a marshal; keep our copy current.
+    let pinsChanged = false;
     for (const g of positions) {
       const mine = state.groups.find((x) => x.id === g.id);
       if (mine && mine.startedAt !== g.startedAt) mine.startedAt = g.startedAt;
+      if (g.pin && pins[g.id] !== g.pin) { pins[g.id] = g.pin; pinsChanged = true; }
     }
+    if (pinsChanged) renderGroups();
     $('posstat').textContent = 'Dikemas kini ' + clock(Date.now());
     renderPositions();
   } catch (err) {

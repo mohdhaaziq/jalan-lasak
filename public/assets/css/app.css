@@ -255,7 +255,8 @@ a:hover { color: var(--color-accent); }
   gap: var(--space-2);
 }
 .jl-dialog .dialog-title { font-size: 17px; letter-spacing: .01em; }
-.jl-dialog .dialog-body { font-size: 13px; opacity: 1; color: var(--jl-muted); }
+.jl-dialog .dialog-body { font-size: 13px; opacity: 1; color: var(--jl-muted); white-space: pre-line; }
+.jl-dialog .pin-big { font-family: var(--font-heading); font-weight: 800; font-size: 40px; letter-spacing: .18em; color: var(--jl-ink); margin: 12px 0; user-select: all; }
 .jl-dialog .input { background: var(--color-bg); border: 2px solid var(--jl-ink); min-height: 44px; }
 .jl-dialog .input:focus-visible { border-color: var(--color-accent); }
 .jl-dialog .dialog-actions { justify-content: flex-start; flex-wrap: wrap; }

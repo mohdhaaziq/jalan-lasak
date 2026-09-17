@@ -8,6 +8,7 @@ const KEY_TARGET = 'jl_target';
 const KEY_PREFS = 'jl_prefs_v1';
 const KEY_STATE = 'jl_state_v2';     // server state cache: { version, points, routes, groups }
 const KEY_GROUP = 'jl_group_v1';     // this phone's group id (participant)
+const KEY_GROUP_PIN = 'jl_gpin_v1';  // that group's PIN, so the phone stays logged in
 const KEY_DEVICE = 'jl_device_v1';   // this phone's random id
 const KEY_QUEUE = 'jl_posq_v1';      // positions not yet delivered
 const KEY_CCKEY = 'jl_cckey_v1';     // command-centre key, on that device only
@@ -118,6 +119,17 @@ export function loadGroup() {
 
 export function saveGroup(id) {
   try { localStorage.setItem(KEY_GROUP, id || ''); } catch { /* storage unavailable */ }
+}
+
+export function loadGroupPin() {
+  try { return localStorage.getItem(KEY_GROUP_PIN) || ''; } catch { return ''; }
+}
+
+export function saveGroupPin(pin) {
+  try {
+    if (pin) localStorage.setItem(KEY_GROUP_PIN, pin);
+    else localStorage.removeItem(KEY_GROUP_PIN);
+  } catch { /* storage unavailable */ }
 }
 
 /** A random id minted once per phone, so the same group's fixes can be told apart by device. */
