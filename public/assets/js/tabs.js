@@ -20,6 +20,7 @@ function fitViewport() {
   let h = window.innerHeight;
   let sab = 0;
   if (navigator.standalone === true) {
+    root.classList.add('ios-standalone');
     const portrait = window.innerHeight >= window.innerWidth;
     const full = portrait ? Math.max(screen.height, screen.width) : Math.min(screen.height, screen.width);
     const top = parseFloat(getComputedStyle(root).getPropertyValue('--sat')) || 0;

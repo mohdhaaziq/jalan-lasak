@@ -32,10 +32,16 @@ a { color: var(--color-accent-700); }
 a:hover { color: var(--color-accent); }
 
 #app { position: fixed; inset: 0; display: flex; flex-direction: column; }
-/* iOS standalone: inset:0 alone can stop short of the home-indicator band.
-   tabs.js keeps --app-h at the live window height; dvh is the fallback. */
 @supports (height: 100dvh) { #app { height: 100dvh; } }
 #app { height: var(--app-h, 100dvh); }
+
+/* iOS home-screen app (tabs.js adds the class): WebKit slides the document
+   up under the status bar without growing the viewport, and clips fixed
+   elements to that short viewport, leaving a blank band at the bottom.
+   Document content is not clipped, so the document is made the screen's
+   height and the app is placed in it rather than fixed to the viewport. */
+html.ios-standalone, html.ios-standalone body { height: auto; min-height: var(--app-h, 100%); }
+html.ios-standalone #app { position: absolute; }
 
 /* ── top bar ─────────────────────────────────────────────────────────── */
 #topbar {
