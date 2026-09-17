@@ -387,12 +387,14 @@ export function boot({ editable = false } = {}) {
     const wrap = $('pointlist');
     wrap.textContent = '';
     let cpIndex = 0;
+    const reached = new Set((state.progress && state.progress.reached) || []);
 
     state.points.forEach((point) => {
       if (!isStart(point)) cpIndex++;
-      const row = el('button', 'row' + (isStart(point) ? ' start' : ''));
+      const done = !isStart(point) && reached.has(point.id);
+      const row = el('button', 'row' + (isStart(point) ? ' start' : '') + (done ? ' done' : ''));
       row.type = 'button';
-      row.append(el('span', 'badge', isStart(point) ? 'M' : String(cpIndex)));
+      row.append(el('span', 'badge', isStart(point) ? 'M' : (done ? '✓' : String(cpIndex))));
 
       const text = el('span');
       const name = el('span', 'nm', point.name + (point.id === targetId ? ' ◀' : ''));
@@ -412,6 +414,13 @@ export function boot({ editable = false } = {}) {
       });
       wrap.append(row);
     });
+
+    // Participants see checkpoints one at a time; say how many are still to come.
+    const hidden = state.progress ? state.progress.hidden : 0;
+    if (hidden > 0) {
+      wrap.append(el('div', 'empty hidden-cp',
+        hidden + ' checkpoint lagi — didedahkan bila kumpulan anda tiba di checkpoint seterusnya.'));
+    }
 
     const count = state.points.filter((p) => !isStart(p)).length;
     // The command centre shows this in a section head; the participant tab bar shows just the number.
@@ -623,6 +632,7 @@ export function boot({ editable = false } = {}) {
     state.routes = Array.isArray(next.routes) ? next.routes : state.routes;
     state.groups = Array.isArray(next.groups) ? next.groups : state.groups;
     state.settings = next.settings && typeof next.settings === 'object' ? next.settings : state.settings;
+    state.progress = next.progress && typeof next.progress === 'object' ? next.progress : null;
     if (!findPoint(targetId)) {
       const start = startPoint();
       targetId = start ? start.id : '';

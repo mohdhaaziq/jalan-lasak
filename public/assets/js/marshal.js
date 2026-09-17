@@ -46,7 +46,7 @@ const ago = (ms) => {
 
 async function syncState() {
   try {
-    const next = await getState();
+    const next = await getState(pin ? { pin } : {});
     state.version = next.version;
     state.points = next.points;
     state.routes = next.routes || [];
@@ -372,8 +372,8 @@ if ('serviceWorker' in navigator) {
 render();
 drawProgram();
 (async () => {
-  await syncState();
   await ensurePin();
+  await syncState();     // with the PIN: every checkpoint, not just MULA
   render();
   if (!point) await choosePoint();
   flush();

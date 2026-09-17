@@ -12,13 +12,20 @@
 
    Storage is D1 (binding DB); schema in schema.sql at the repo root.
 
+   Checkpoints are revealed to a group one at a time: a participant phone
+   (X-Group-Pin header) gets MULA, every checkpoint its group has reached,
+   and the next one. "Reached" is a check-in by a marshal or the command
+   centre, or any of the group's own fixes within REACHED_M of the point.
+   The command centre and marshals see everything; anyone else, MULA only.
+
    Routes
-     GET  /api/state              { version, points, routes, groups, settings }   public
+     GET  /api/state              { version, points, routes, groups, settings, progress? }
+                                  CC key / marshal PIN: all points · X-Group-Pin: revealed points · else MULA only
      PUT  /api/state              { points, routes }  → { version }               CC
      PUT  /api/groups             { groups }  → { version, groups:[{id,pin}] }    CC
      POST /api/groups/login       { pin }     → { id, name, startedAt }          public
      PUT  /api/settings           { smsNumber?, marshalPin? } → { version }       CC
-     POST /api/positions          { group, pin, device, items[] } → { version, saved }   group PIN or CC
+     POST /api/positions          { group, pin, device, items[] } → { version, saved, revealed }   group PIN or CC
      GET  /api/positions[?trail=N]  latest fix, check-ins and start per group     CC or marshal PIN (PINs only for CC)
      POST /api/checkins           { device, items:[{group, point, at?, note?}] }  CC or marshal PIN
 */
@@ -34,6 +41,7 @@ const MAX_TRAIL = 200;      // per-group trail points returned
 const MAX_NAME = 120;
 const MAX_NOTE = 200;
 const CLOCK_SLACK_MS = 7 * 24 * 3600 * 1000;
+const REACHED_M = 100;      // a fix this close to a point counts as arriving there
 
 /* ── helpers ──────────────────────────────────────────────────────────── */
 
@@ -155,24 +163,90 @@ async function getSettings(db) {
   return { smsNumber: sms || '', hasMarshalPin: !!pin };
 }
 
+/** Metres between two {lat,lng}, equirectangular — fine at checkpoint scale. */
+function distM(a, b) {
+  const R = 6371000;
+  const dLat = (b.lat - a.lat) * Math.PI / 180;
+  const dLng = (b.lng - a.lng) * Math.PI / 180 * Math.cos((a.lat + b.lat) / 2 * Math.PI / 180);
+  return R * Math.sqrt(dLat * dLat + dLng * dLng);
+}
+
+/**
+ * Which of the ordered points a group has reached, and which it may see:
+ * MULA, every point reached, and the first one not yet reached. Reaching a
+ * point out of order still counts, but revealing walks the sequence.
+ */
+async function progressFor(db, groupId, points) {
+  const [checkins, fixes] = await Promise.all([
+    db.prepare('SELECT DISTINCT point_id FROM checkins WHERE group_id = ?').bind(groupId).all(),
+    db.prepare('SELECT lat, lng FROM positions WHERE group_id = ? ORDER BY id DESC LIMIT 600').bind(groupId).all()
+  ]);
+  const reached = new Set(checkins.results.map((c) => c.point_id));
+  for (const p of points) {
+    if (reached.has(p.id)) continue;
+    if (fixes.results.some((f) => distM(f, p) <= REACHED_M)) reached.add(p.id);
+  }
+  const revealed = [];
+  for (const p of points) {
+    revealed.push(p);
+    if (p.type !== 'start' && !reached.has(p.id)) break;
+  }
+  return {
+    revealed,
+    reached: points.filter((p) => reached.has(p.id)).map((p) => p.id),
+    hidden: points.length - revealed.length
+  };
+}
+
+/** Who is asking for the program state, and therefore how much of it they get. */
+async function stateRole(request, env) {
+  if (isCC(request, env)) return { role: 'cc' };
+  const mpin = (request.headers.get('X-Marshal-Pin') || '').trim();
+  if (mpin) {
+    const stored = await getMeta(env.DB, 'marshal_pin');
+    if (stored && sameKey(mpin, stored)) return { role: 'marshal' };
+    throw new HttpError(401, 'PIN marshal salah.');
+  }
+  const gpin = (request.headers.get('X-Group-Pin') || '').trim();
+  if (gpin) {
+    const g = isPin(gpin) ? await env.DB.prepare('SELECT id FROM groups WHERE pin = ?').bind(gpin).first() : null;
+    if (g) return { role: 'group', group: g.id };
+    throw new HttpError(401, 'PIN kumpulan salah — masuk semula.');
+  }
+  return { role: 'public' };
+}
+
 /* ── state ────────────────────────────────────────────────────────────── */
 
-async function getState(env) {
+async function getState(request, env) {
   const db = env.DB;
   await seedIfEmpty(db);
-  const [version, points, routes, groups, settings] = await Promise.all([
+  const who = await stateRole(request, env);
+  const [version, pointRows, routes, groups, settings] = await Promise.all([
     getVersion(db),
     db.prepare('SELECT id, type, name, lat, lng, eta_min FROM points ORDER BY seq').all(),
     db.prepare('SELECT id, name, latlngs FROM routes ORDER BY seq').all(),
     db.prepare('SELECT id, name, started_at FROM groups ORDER BY seq').all(),
     getSettings(db)
   ]);
+  let points = pointRows.results.map((p) => ({ ...p, etaMin: p.eta_min, eta_min: undefined }));
+  let progress;
+  if (who.role === 'group') {
+    const pr = await progressFor(db, who.group, points);
+    points = pr.revealed;
+    progress = { reached: pr.reached, hidden: pr.hidden };
+  } else if (who.role === 'public') {
+    const start = points.filter((p) => p.type === 'start');
+    progress = { reached: [], hidden: points.length - start.length };
+    points = start;
+  }
   return json({
     version,
-    points: points.results.map((p) => ({ ...p, etaMin: p.eta_min, eta_min: undefined })),
+    points,
     routes: routes.results.map((r) => ({ ...r, latlngs: JSON.parse(r.latlngs) })),
     groups: groups.results.map((g) => ({ id: g.id, name: g.name, startedAt: g.started_at })),
-    settings
+    settings,
+    ...(progress ? { progress } : {})
   });
 }
 
@@ -332,7 +406,9 @@ async function postPositions(request, env) {
     ));
   }
   if (stmts.length) await db.batch(stmts);
-  return json({ version: await getVersion(db), saved: stmts.length });
+  const points = await db.prepare('SELECT id, type, lat, lng FROM points ORDER BY seq').all();
+  const pr = await progressFor(db, body.group, points.results);
+  return json({ version: await getVersion(db), saved: stmts.length, revealed: pr.revealed.length });
 }
 
 async function getPositions(request, env, url) {
@@ -429,7 +505,9 @@ async function postCheckins(request, env) {
     }
   }
   if (!stmts.length) throw new HttpError(400, 'Tiada daftar masuk yang sah.');
-  if (Object.keys(started).length) stmts.push(bumpVersion(db));
+  // Every check-in may reveal the next checkpoint to a group; a version bump
+  // is what makes its phone fetch the state again.
+  stmts.push(bumpVersion(db));
   await db.batch(stmts);
   return json({ version: await getVersion(db), saved: items.length, started });
 }
@@ -444,7 +522,7 @@ export async function onRequest({ request, env }) {
   try {
     if (!env.DB) throw new HttpError(503, 'Pangkalan data D1 belum diikat (binding DB).');
 
-    if (route === 'state' && method === 'GET') return await getState(env);
+    if (route === 'state' && method === 'GET') return await getState(request, env);
     if (route === 'state' && method === 'PUT') return await putState(request, env);
     if (route === 'groups' && method === 'PUT') return await putGroups(request, env);
     if (route === 'groups/login' && method === 'POST') return await loginGroup(request, env);

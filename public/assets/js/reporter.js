@@ -128,7 +128,7 @@ export function createReporter({ getGroup, getPin, getDevice, onFix, onStatus, o
         saveQueue(queue);
         lastDelivered = Date.now();
         lastError = '';
-        if (onVersion && typeof result.version === 'number') onVersion(result.version);
+        if (onVersion && typeof result.version === 'number') onVersion(result.version, result);
       }
     } catch (err) {
       if (err instanceof ApiError && (err.status === 404 || err.status === 401)) {

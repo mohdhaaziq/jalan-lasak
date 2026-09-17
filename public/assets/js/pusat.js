@@ -128,7 +128,7 @@ setInterval(() => { if (dirty && !pushing) push(); }, 30 * 1000);
 
 async function pullState() {
   try {
-    const next = await getState();
+    const next = await getState({ key });
     if (dirty) return;                  // never overwrite edits still in flight
     if (next.version !== state.version) core.applyState(next);
     else {

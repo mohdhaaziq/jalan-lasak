@@ -25,21 +25,44 @@ const clock = (ms) => new Date(ms).toLocaleTimeString('ms-MY', { hour: '2-digit'
 
 /* ── program state from the server ──────────────────────────────────── */
 
+/** The newest checkpoint this phone can see — the one the group is walking to. */
+const lastPoint = () => core.state.points[core.state.points.length - 1] || null;
+
 async function syncState() {
   if (syncing) return false;
   syncing = true;
   try {
-    const next = await getState();
-    if (next.version !== core.state.version) {
+    // With the group's PIN the server reveals checkpoints as the group reaches them.
+    const next = await getState(groupPin ? { groupPin } : {});
+    const before = core.state.points.map((p) => p.id);
+    const after = (next.points || []).map((p) => p.id);
+    const versionChanged = next.version !== core.state.version;
+    const pointsChanged = before.join(',') !== after.join(',');
+    const progressChanged = JSON.stringify(next.progress || null) !== JSON.stringify(core.state.progress || null);
+    if (versionChanged || pointsChanged || progressChanged) {
+      const wasLast = lastPoint();
       core.applyState(next);
-      toast('Peta dikemas kini oleh pusat kawalan.');
+      const nowLast = lastPoint();
+      if (nowLast && (!wasLast || wasLast.id !== nowLast.id) && after.length > before.length) {
+        // A new checkpoint was revealed: aim the compass at it.
+        core.setTarget(nowLast.id);
+        toast('Checkpoint seterusnya didedahkan: ' + nowLast.name, 5000);
+      } else if (versionChanged || pointsChanged) {
+        toast('Peta dikemas kini oleh pusat kawalan.');
+      }
     } else {
       core.state.groups = next.groups;
       saveState(core.state);
     }
     $('statestat').textContent = 'Peta dikemas kini ' + clock(Date.now());
     return true;
-  } catch {
+  } catch (err) {
+    if (err.status === 401 && groupPin) {
+      // The PIN was reset or the group deleted; the cached map may show more than allowed.
+      logoutGroup();
+      notify({ title: 'Masuk semula', body: 'PIN kumpulan ini tidak lagi sah. Minta PIN baharu dari pusat kawalan.' })
+        .then(chooseGroup);
+    }
     $('statestat').textContent = 'Guna salinan dalam peranti';
     return false;
   } finally {
@@ -89,8 +112,8 @@ async function chooseGroup() {
     groupPin = pin;
     saveGroup(group);
     saveGroupPin(pin);
-    // The list on this phone may predate the group; make sure it is named.
-    if (!core.state.groups.some((g) => g.id === group)) await syncState();
+    // Fetch the state as this group: its name, and the checkpoints revealed to it.
+    await syncState();
     renderGroup();
     reporter.start();
     toast('Telefon ini kini ' + (groupName(group) || found.name) + '.');
@@ -104,6 +127,9 @@ function logoutGroup() {
   groupPin = '';
   saveGroup('');
   saveGroupPin('');
+  // Without a PIN the phone may only see MULA; drop the checkpoints it held.
+  const start = core.state.points.find((p) => p.type === 'start');
+  core.applyState({ version: core.state.version, points: start ? [start] : [], progress: null });
   renderGroup();
 }
 
@@ -168,8 +194,9 @@ const reporter = createReporter({
     notify({ title: 'Masuk semula', body: 'Kumpulan ini dipadam atau PIN-nya ditukar oleh pusat kawalan. Minta PIN baharu dan masuk semula.' })
       .then(chooseGroup);
   },
-  onVersion: (version) => {
-    if (version !== core.state.version) syncState();
+  onVersion: (version, result) => {
+    // A new version, or the server now reveals more points than we hold.
+    if (version !== core.state.version || (result && result.revealed > core.state.points.length)) syncState();
   }
 });
 

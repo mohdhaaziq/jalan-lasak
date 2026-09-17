@@ -5,7 +5,7 @@ peranan:
 
 | | **Peserta** (`/`) | **Marshal** (`/marshal.html`, PIN) | **Pusat kawalan** (`/pusat.html`, kunci) |
 | --- | --- | --- | --- |
-| Checkpoint & laluan | lihat sahaja — kemas kini automatik | — | tambah, seret, namakan, jadual; lukis laluan |
+| Checkpoint & laluan | **didedahkan satu persatu** — CP seterusnya muncul bila tiba di CP sebelumnya | semua | tambah, seret, namakan, jadual; lukis laluan |
 | Kedudukan | telefon kumpulan hantar sendiri (masuk dengan **PIN kumpulan**) | peta kedudukan semasa semua kumpulan, jarak dari CP-nya | peta + senarai semua kumpulan, jejak, "kali terakhir dilihat"; PIN setiap kumpulan |
 | Daftar masuk | — | catat setiap kumpulan yang tiba di CP-nya | catat sendiri (dari radio), lihat semua |
 | Jadual | lihat jangkaan tiba | — | tetapkan; amaran bila kumpulan **lewat** |
@@ -52,6 +52,17 @@ telefon kumpulan ──POST /api/positions──▶ ┌────────�
 - **Pusat kawalan** menyegarkan kedudukan setiap 15 saat. Kumpulan senyap
   > 10 minit ditanda, > 20 minit merah; SOS diletak paling atas dengan
   amaran berbunyi, dan kekal sehingga telefon itu membatalkannya.
+
+### Checkpoint didedahkan satu persatu
+
+Telefon peserta hanya menerima MULA, checkpoint yang sudah dicapai
+kumpulannya, dan **satu** checkpoint seterusnya — pelayan menapis mengikut
+PIN kumpulan, bukan sekadar menyembunyikan di skrin. "Sampai" dikira dari
+daftar masuk marshal atau pusat kawalan, atau mana-mana kedudukan kumpulan
+itu dalam 100 m dari titik. Bila checkpoint baharu didedahkan, kompas terus
+disasarkan kepadanya. Laluan cadangan **tidak** ditapis — jika laluan
+mendedahkan lokasi checkpoint, lukis laluan hanya setakat checkpoint
+seterusnya, atau jangan lukis.
 
 ### Kawasan tiada isyarat — apa yang menjaga keselamatan
 
@@ -195,12 +206,12 @@ design/                 bundle serahan Claude Design (rujukan)
 
 | Kaedah | Laluan | Siapa | Kegunaan |
 | --- | --- | --- | --- |
-| GET | `/api/state` | semua | checkpoint (+ jadual), laluan, kumpulan (+ masa mula), tetapan, versi |
+| GET | `/api/state` | semua | checkpoint (+ jadual), laluan, kumpulan (+ masa mula), tetapan, versi. Kunci / PIN marshal: semua titik; `X-Group-Pin`: titik yang didedahkan + `progress`; tanpa apa-apa: MULA sahaja |
 | PUT | `/api/state` | kunci | ganti checkpoint + laluan |
 | PUT | `/api/groups` | kunci | ganti senarai kumpulan; masa mula dan PIN dikekalkan jika tidak dihantar, `resetPin: true` jana PIN baharu; pulang PIN setiap kumpulan |
 | POST | `/api/groups/login` | telefon | `{ pin }` → kumpulan yang memiliki PIN itu |
 | PUT | `/api/settings` | kunci | nombor SMS, PIN marshal |
-| POST | `/api/positions` | telefon (PIN kumpulan) atau kunci | hantar sekumpulan kedudukan (`source: 'sms'` untuk yang ditaip) |
+| POST | `/api/positions` | telefon (PIN kumpulan) atau kunci | hantar sekumpulan kedudukan (`source: 'sms'` untuk yang ditaip); pulang `revealed` = bilangan titik yang kumpulan itu boleh lihat |
 | GET | `/api/positions?trail=N` | kunci **atau** PIN | kedudukan terkini, daftar masuk dan masa mula setiap kumpulan + N jejak; PIN kumpulan hanya untuk kunci |
 | POST | `/api/checkins` | kunci **atau** PIN | catat kumpulan tiba di titik; tiba di MULA memulakan jam kumpulan |
 
@@ -214,7 +225,7 @@ Melayu dan dipaparkan terus dalam app.
 
 | Cache | Isi | Dibuang bila |
 | --- | --- | --- |
-| `jl-shell-v8` | fail app + salinan terakhir `/api/state` | versi baharu digunakan |
+| `jl-shell-v9` | fail app + salinan terakhir `/api/state` | versi baharu digunakan |
 | `jl-tiles-v1` | tile yang **sengaja** disimpan | hanya melalui butang *Kosongkan* |
 | `jl-tiles-auto-v1` | tile yang terpapar semasa melayari | automatik, melebihi 1500 tile |
 

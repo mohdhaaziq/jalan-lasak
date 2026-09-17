@@ -11,11 +11,12 @@ export class ApiError extends Error {
 
 const BASE = 'api/';
 
-async function call(path, { method = 'GET', body, key, pin } = {}) {
+async function call(path, { method = 'GET', body, key, pin, groupPin } = {}) {
   const headers = {};
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   if (key) headers.Authorization = 'Bearer ' + key;
   else if (pin) headers['X-Marshal-Pin'] = pin;
+  else if (groupPin) headers['X-Group-Pin'] = groupPin;
 
   let response;
   try {
@@ -38,8 +39,12 @@ async function call(path, { method = 'GET', body, key, pin } = {}) {
   return data;
 }
 
-/** Program state everyone shares: points, routes, groups and a version number. */
-export const getState = () => call('state');
+/**
+ * Program state: points, routes, groups and a version number. Who asks decides
+ * how many checkpoints come back — { key } or { pin } (marshal) get them all,
+ * { groupPin } gets the ones revealed to that group, nothing gets MULA only.
+ */
+export const getState = (auth = {}) => call('state', auth);
 
 /** Command centre: replace the points and routes. Resolves to { version }. */
 export const putState = (key, { points, routes }) =>
