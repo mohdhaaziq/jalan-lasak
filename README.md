@@ -155,6 +155,19 @@ Untuk deploy automatik setiap `git push`, sambungkan repo GitHub di
 *Workers & Pages → Create → Pages → Connect to Git* dengan build output
 directory `public`. Binding dan secret ditetapkan sekali dalam tetapan projek.
 
+### Manual pengguna
+
+Dua manual PDF lengkap dengan tangkapan skrin, diedarkan oleh penganjur
+(tidak disimpan dalam repositori; folder `docs/` diabaikan git):
+
+| Manual | Untuk siapa | Isi |
+| --- | --- | --- |
+| **Manual Peserta** | ketua kumpulan | masuk PIN, simpan peta offline, kekalkan skrin hidup, tab Kumpulan / Checkpoint / Peta, kod checkpoint, SOS dan SMS, bila tiada isyarat, penyelesaian masalah |
+| **Manual Pusat Kawalan & Marshal** | operator pusat kawalan, marshal | senarai semak sebelum program, kumpulan dan PIN, tetapan, checkpoint dan jadual, kod checkpoint dan cetak, memantau kumpulan, daftar masuk manual dan SMS, marshal langkah demi langkah, prosedur kecemasan |
+
+Tangkapan skrin dalam manual dibuat dari pelayan tempatan dengan data demo;
+PIN dan kod di dalamnya bukan data sebenar.
+
 ### Sebelum program
 
 1. Buka `/pusat.html`, masukkan `CC_KEY`.
