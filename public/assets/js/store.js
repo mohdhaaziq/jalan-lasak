@@ -6,7 +6,10 @@ const KEY_POINTS = 'jl_points_v1';
 const KEY_ROUTES = 'jl_routes_v1';
 const KEY_TARGET = 'jl_target';
 const KEY_PREFS = 'jl_prefs_v1';
-const KEY_STATE = 'jl_state_v2';     // server state cache: { version, points, routes, groups }
+// Each role sees a different slice of the program (participants only the
+// checkpoints revealed to them), so each page keeps its own copy.
+const ROLE = /pusat/.test(location.pathname) ? 'cc' : /marshal/.test(location.pathname) ? 'marshal' : 'peserta';
+const KEY_STATE = 'jl_state_v3_' + ROLE;   // server state cache: { version, points, routes, groups, … }
 const KEY_GROUP = 'jl_group_v1';     // this phone's group id (participant)
 const KEY_GROUP_PIN = 'jl_gpin_v1';  // that group's PIN, so the phone stays logged in
 const KEY_DEVICE = 'jl_device_v1';   // this phone's random id

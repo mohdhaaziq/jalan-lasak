@@ -221,8 +221,10 @@ public/                 laman statik (Cloudflare Pages)
   assets/js/store.js    simpanan localStorage
   assets/js/geo.js      jarak, bearing, matematik tile
   assets/js/ui.js       dialog dan toast bertema
+  assets/js/tabs.js     navbar bawah (peserta dan pusat kawalan)
+  assets/js/lock.js     buka kunci checkpoint dengan kod (AES-GCM, PBKDF2)
   assets/js/offline.js  simpan tile kawasan
-  vendor/               Leaflet 1.9.4 + fon Archivo (self-hosted)
+  vendor/               Leaflet 1.9.4 + fon Archivo + qrcode-generator (self-hosted)
 functions/api/[[route]].js   API — satu Pages Function
 schema.sql              jadual D1
 wrangler.toml           konfigurasi Pages + binding D1
@@ -253,7 +255,7 @@ Melayu dan dipaparkan terus dalam app.
 
 | Cache | Isi | Dibuang bila |
 | --- | --- | --- |
-| `jl-shell-v12` | fail app + salinan terakhir `/api/state` | versi baharu digunakan |
+| `jl-shell-v13` | fail app + salinan terakhir `/api/state` | versi baharu digunakan |
 | `jl-tiles-v1` | tile yang **sengaja** disimpan | hanya melalui butang *Kosongkan* |
 | `jl-tiles-auto-v1` | tile yang terpapar semasa melayari | automatik, melebihi 1500 tile |
 

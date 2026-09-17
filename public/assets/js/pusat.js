@@ -10,6 +10,7 @@ import { loadCCKey, saveCCKey, saveState } from './store.js';
 import { askText, askChoice, askConfirm, notify, toast } from './ui.js';
 import { distM, fmtDist } from './geo.js';
 import { scheduleFor, lateness, etaLabel } from './schedule.js';
+import { mountTabs } from './tabs.js';
 
 const POSITIONS_POLL_MS = 15 * 1000;
 const TRAIL_POINTS = 60;
@@ -19,6 +20,7 @@ const STALE_BAD_MS = 20 * 60 * 1000;
 const core = boot({ editable: true });
 mountEditing(core);
 const { L, map, state } = core;
+mountTabs({ map, storageKey: 'jl_tab_pusat', defaultPane: 'kumpulan' });
 
 let key = loadCCKey();
 let positions = [];          // [{ id, name, startedAt, pin, last, checkins, trail }]
@@ -130,7 +132,10 @@ async function pullState() {
   try {
     const next = await getState({ key });
     if (dirty) return;                  // never overwrite edits still in flight
-    if (next.version !== state.version) core.applyState(next);
+    const ids = (list) => (list || []).map((x) => x.id).join(',');
+    const differs = next.version !== state.version ||
+      ids(next.points) !== ids(state.points) || ids(next.routes) !== ids(state.routes);
+    if (differs) core.applyState(next);
     else {
       state.groups = next.groups;
       state.settings = next.settings || state.settings;

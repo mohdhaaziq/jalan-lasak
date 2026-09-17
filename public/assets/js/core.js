@@ -426,8 +426,7 @@ export function boot({ editable = false } = {}) {
     }
 
     const count = state.points.filter((p) => !isStart(p)).length;
-    // The command centre shows this in a section head; the participant tab bar shows just the number.
-    $('cpcount').textContent = editable ? count + ' checkpoint · tekan lama peta utk tambah' : String(count);
+    $('cpcount').textContent = String(count);   // sits in the tab bar on both pages
   }
 
   function renderRouteList() {

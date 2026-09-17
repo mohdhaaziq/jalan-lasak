@@ -75,57 +75,76 @@
       </div>
     </div>
 
-    <button type="button" id="sheethead" aria-expanded="true" aria-controls="sheetbody">
-      <span class="t">Kumpulan</span>
-      <span class="n" id="posstat"></span>
-      <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg>
-    </button>
-
-    <div id="sheetbody">
-      <div class="stat" id="syncstat"></div>
-      <div class="acts pad">
-        <button type="button" class="jl-btn acc" id="btnStartAll">Mula semua</button>
-        <button type="button" class="jl-btn" id="btnSmsIn">Masuk SMS</button>
-      </div>
-      <div id="poslist"></div>
-
-      <div class="sect-head">Senarai kumpulan</div>
-      <div id="grouplist"></div>
-      <div class="acts pad">
-        <button type="button" class="jl-btn acc" id="btnAddGroup">Tambah kumpulan</button>
-        <button type="button" class="jl-btn" id="btnSettings">Tetapan</button>
-        <button type="button" class="jl-btn" id="btnCodes">Kod checkpoint</button>
-      </div>
-      <div class="stat pad" id="setstat"></div>
-
-      <div class="sect-head">Checkpoint <span class="n" id="cpcount"></span></div>
-      <div id="layers" role="group" aria-label="Lapisan peta">
-        <button type="button" data-layer="osm" class="on" aria-pressed="true">Denai OSM</button>
-        <button type="button" data-layer="topo" aria-pressed="false">Topo</button>
-        <button type="button" data-layer="sat" aria-pressed="false">Satelit</button>
-      </div>
-      <button type="button" class="check" id="contourrow" aria-pressed="false">
-        <span class="box" aria-hidden="true"></span>
-        <span><b>Kontur</b> — lapisan topo lutsinar atas satelit</span>
-      </button>
-      <div id="pointlist"></div>
-
-      <div class="sect-head">Laluan cadangan <span class="n" id="rtcount"></span></div>
-      <div id="routelist"></div>
-
-      <div class="sect-head">Peta offline</div>
-      <div id="offline">
-        <div class="desc">Simpan peta seluruh kawasan program pada zum paling dalam, supaya peta tetap terbuka tanpa talian.</div>
-        <div class="acts">
-          <button type="button" class="jl-btn acc" id="btnCache">Simpan kawasan ini</button>
-          <button type="button" class="jl-btn" id="btnCacheClear">Kosongkan</button>
-          <span class="stat" id="offstat"></span>
+    <div id="panes">
+      <section class="pane" id="pane-kumpulan" role="tabpanel" aria-labelledby="tab-kumpulan">
+        <div class="stat pad top" id="posstat"></div>
+        <div class="stat pad" id="syncstat"></div>
+        <div class="acts pad">
+          <button type="button" class="jl-btn acc" id="btnStartAll">Mula semua</button>
+          <button type="button" class="jl-btn" id="btnSmsIn">Masuk SMS</button>
         </div>
-        <div class="bar" id="offbar"><span id="offbarfill"></span></div>
-      </div>
+        <div id="poslist"></div>
+      </section>
 
-      <div class="foot"><a href="./">Paparan peserta →</a> &nbsp;·&nbsp; <a href="marshal.html">Marshal →</a></div>
+      <section class="pane" id="pane-senarai" role="tabpanel" aria-labelledby="tab-senarai" hidden>
+        <div id="grouplist"></div>
+        <div class="acts pad">
+          <button type="button" class="jl-btn acc" id="btnAddGroup">Tambah kumpulan</button>
+          <button type="button" class="jl-btn" id="btnSettings">Tetapan</button>
+          <button type="button" class="jl-btn" id="btnCodes">Kod checkpoint</button>
+        </div>
+        <div class="stat pad" id="setstat"></div>
+      </section>
+
+      <section class="pane" id="pane-checkpoint" role="tabpanel" aria-labelledby="tab-checkpoint" hidden>
+        <div class="stat pad top">Tekan lama peta untuk tambah · seret penanda untuk alih · ketik penanda untuk nama, masa, padam</div>
+        <div id="pointlist"></div>
+        <div class="sect-head">Laluan cadangan <span class="n" id="rtcount"></span></div>
+        <div id="routelist"></div>
+      </section>
+
+      <section class="pane" id="pane-peta" role="tabpanel" aria-labelledby="tab-peta" hidden>
+        <div id="layers" role="group" aria-label="Lapisan peta">
+          <button type="button" data-layer="osm" class="on" aria-pressed="true">Denai OSM</button>
+          <button type="button" data-layer="topo" aria-pressed="false">Topo</button>
+          <button type="button" data-layer="sat" aria-pressed="false">Satelit</button>
+        </div>
+        <button type="button" class="check" id="contourrow" aria-pressed="false">
+          <span class="box" aria-hidden="true"></span>
+          <span><b>Kontur</b> — lapisan topo lutsinar atas satelit</span>
+        </button>
+        <div class="sect-head">Peta offline</div>
+        <div id="offline">
+          <div class="desc">Simpan peta seluruh kawasan program pada zum paling dalam, supaya peta tetap terbuka tanpa talian.</div>
+          <div class="acts">
+            <button type="button" class="jl-btn acc" id="btnCache">Simpan kawasan ini</button>
+            <button type="button" class="jl-btn" id="btnCacheClear">Kosongkan</button>
+            <span class="stat" id="offstat"></span>
+          </div>
+          <div class="bar" id="offbar"><span id="offbarfill"></span></div>
+        </div>
+        <div class="foot"><a href="./">Paparan peserta →</a> &nbsp;·&nbsp; <a href="marshal.html">Marshal →</a></div>
+      </section>
     </div>
+
+    <nav id="tabbar" role="tablist" aria-label="Bahagian">
+      <button type="button" role="tab" id="tab-kumpulan" data-pane="kumpulan" aria-selected="true" aria-controls="pane-kumpulan">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20v-1.5a5 5 0 0 1 5-5h3a5 5 0 0 1 5 5V20"/><circle cx="17" cy="9" r="2.5"/><path d="M17 13.5a4 4 0 0 1 4 4V20"/></svg>
+        <span>Kumpulan</span>
+      </button>
+      <button type="button" role="tab" id="tab-senarai" data-pane="senarai" aria-selected="false" aria-controls="pane-senarai" tabindex="-1">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="16"/><path d="M7 9h10M7 13h10M7 17h6"/></svg>
+        <span>Senarai</span>
+      </button>
+      <button type="button" role="tab" id="tab-checkpoint" data-pane="checkpoint" aria-selected="false" aria-controls="pane-checkpoint" tabindex="-1">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 21V4M5 4h13l-3 4 3 4H5"/></svg>
+        <span>Checkpoint <span class="n" id="cpcount"></span></span>
+      </button>
+      <button type="button" role="tab" id="tab-peta" data-pane="peta" aria-selected="false" aria-controls="pane-peta" tabindex="-1">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3 3 8l9 5 9-5-9-5Z"/><path d="m3 12 9 5 9-5"/><path d="m3 16 9 5 9-5"/></svg>
+        <span>Peta</span>
+      </button>
+    </nav>
   </section>
 
 </div>

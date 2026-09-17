@@ -9,6 +9,7 @@ import { loadGroup, saveGroup, loadGroupPin, saveGroupPin, deviceId, saveState,
 import { askText, askConfirm, notify, toast } from './ui.js';
 import { createReporter } from './reporter.js';
 import { unlockPoint, normCode, codeFromText, CODE_LEN } from './lock.js';
+import { mountTabs } from './tabs.js';
 
 const STATE_POLL_MS = 5 * 60 * 1000;
 
@@ -401,49 +402,9 @@ btnSOS.addEventListener('click', async () => {
   toast('SOS dihantar. Kekalkan app terbuka.', 6000);
 });
 
-/* ── bottom tab bar: one pane at a time, so menu and content share a screen ── */
+/* ── bottom tab bar ─────────────────────────────────────────────────── */
 
-const TAB_KEY = 'jl_tab_v1';
-const tabs = [...document.querySelectorAll('#tabbar [role="tab"]')];
-const sheet = $('sheet');
-
-function showPane(name) {
-  // name === null closes the panel and gives the map the whole screen.
-  for (const tab of tabs) {
-    const on = tab.dataset.pane === name;
-    tab.setAttribute('aria-selected', String(on));
-    tab.tabIndex = on || (name === null && tab === tabs[0]) ? 0 : -1;
-    $('pane-' + tab.dataset.pane).hidden = !on;
-  }
-  sheet.classList.toggle('open', name !== null);
-  try { localStorage.setItem(TAB_KEY, name || ''); } catch { /* storage unavailable */ }
-  // The map's usable height changed with the panel.
-  setTimeout(() => core.map.invalidateSize({ pan: false }), 210);
-}
-
-for (const tab of tabs) {
-  tab.addEventListener('click', () => {
-    const open = tab.getAttribute('aria-selected') === 'true';
-    showPane(open ? null : tab.dataset.pane);
-  });
-  tab.addEventListener('keydown', (event) => {
-    const i = tabs.indexOf(tab);
-    let next = null;
-    if (event.key === 'ArrowRight') next = tabs[(i + 1) % tabs.length];
-    if (event.key === 'ArrowLeft') next = tabs[(i - 1 + tabs.length) % tabs.length];
-    if (next) {
-      event.preventDefault();
-      next.focus();
-      showPane(next.dataset.pane);
-    }
-  });
-}
-
-{
-  let saved = 'kumpulan';
-  try { saved = localStorage.getItem(TAB_KEY) ?? 'kumpulan'; } catch { /* storage unavailable */ }
-  showPane(saved && tabs.some((t) => t.dataset.pane === saved) ? saved : (saved === '' ? null : 'kumpulan'));
-}
+mountTabs({ map: core.map, storageKey: 'jl_tab_peserta', defaultPane: 'kumpulan' });
 
 /* ── keep the screen on ─────────────────────────────────────────────── */
 

@@ -321,7 +321,8 @@ body:has(#tabbar) #toast { bottom: calc(70px + env(safe-area-inset-bottom)); }
 .stat.ok { color: var(--jl-muted); }
 .stat.warn { color: var(--color-accent-700); }
 .stat.bad, .stat.bad::before { color: var(--color-accent); }
-#syncstat { padding: 8px 14px 0; }
+#syncstat { padding: 0 14px 6px; }
+.stat.pad.top { padding-top: 10px; }
 .acts { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .acts.pad { padding: 4px 14px 14px; }
 #report { padding: 10px 14px 12px; border-bottom: 2px solid var(--jl-rule); }
@@ -350,7 +351,7 @@ body:has(#tabbar) #toast { bottom: calc(70px + env(safe-area-inset-bottom)); }
   font-family: var(--font-heading); font-size: 12px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
   text-align: left;
 }
-#ccalert { border: 0; width: 100%; cursor: pointer; animation: jl-pulse 1.2s infinite; }
+#ccalert { border: 0; width: 100%; cursor: pointer; animation: jl-pulse 1.2s infinite; max-height: 4.4em; overflow: hidden; }   /* never more than three lines over the map; tap for the first case */
 @keyframes jl-pulse {
   0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-accent) 60%, transparent); }
   50% { box-shadow: 0 0 0 8px color-mix(in srgb, var(--color-accent) 0%, transparent); }
