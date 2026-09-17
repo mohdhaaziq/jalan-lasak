@@ -385,6 +385,16 @@ body:has(#tabbar) #toast { bottom: calc(70px + env(safe-area-inset-bottom)); }
 .row .rowacts { display: flex; flex-direction: column; gap: 4px; flex: none; }
 .stat.pad { padding: 0 14px 12px; }
 
+/* — marshal page: a map of where everyone is, then the arrivals list — */
+#mmapwrap { position: relative; border-bottom: 2px solid var(--jl-ink); }
+#mmap { height: 40vh; min-height: 220px; background: var(--jl-map-bg); }
+#mmapwrap .fab { position: absolute; right: 10px; top: 10px; z-index: 1000; }
+#mposstat { padding: 6px 14px; border-top: 2px solid var(--jl-rule); background: var(--color-neutral-100); }
+#mposstat.bad { color: var(--color-accent); font-weight: 700; }
+.jl-marker.mine { box-shadow: 0 0 0 3px var(--color-accent); }
+.marshal .row.grp.sos { background: var(--color-accent-100); }
+.marshal .row.grp.sos .badge.outline { background: var(--color-accent); border-color: var(--color-accent); color: var(--jl-on-ink); }
+
 /* — marshal page: a list, not a map — */
 body.page { overflow: auto; }
 #app.marshal { position: static; min-height: 100%; display: flex; flex-direction: column; background: var(--color-neutral-100); }

@@ -19,7 +19,7 @@
      POST /api/groups/login       { pin }     → { id, name, startedAt }          public
      PUT  /api/settings           { smsNumber?, marshalPin? } → { version }       CC
      POST /api/positions          { group, pin, device, items[] } → { version, saved }   group PIN or CC
-     GET  /api/positions[?trail=N]  latest fix, check-ins and start per group     CC
+     GET  /api/positions[?trail=N]  latest fix, check-ins and start per group     CC or marshal PIN (PINs only for CC)
      POST /api/checkins           { device, items:[{group, point, at?, note?}] }  CC or marshal PIN
 */
 
@@ -336,9 +336,9 @@ async function postPositions(request, env) {
 }
 
 async function getPositions(request, env, url) {
-  requireCC(request, env);
+  const who = await requireCCOrMarshal(request, env);
   const db = env.DB;
-  await ensurePins(db);
+  if (who === 'cc') await ensurePins(db);
   const trail = Math.min(MAX_TRAIL, Math.max(0, parseInt(url.searchParams.get('trail') || '0', 10) || 0));
 
   // Latest fix per group, joined so deleted groups disappear.
@@ -356,7 +356,7 @@ async function getPositions(request, env, url) {
     id: r.group_id,
     name: r.name,
     startedAt: r.started_at,
-    pin: r.pin,
+    ...(who === 'cc' ? { pin: r.pin } : {}),   // a marshal phone never sees group PINs
     last: r.lat === null ? null : {
       lat: r.lat, lng: r.lng, acc: r.acc, battery: r.battery, sos: !!r.sos, source: r.source,
       at: r.recorded_at, receivedAt: r.received_at, device: r.device

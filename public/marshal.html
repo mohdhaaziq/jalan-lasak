@@ -11,8 +11,10 @@
 <title>Jalan Lasak — Marshal</title>
 <link rel="icon" href="assets/icons/favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="assets/icons/icon-192.png">
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css">
 <link rel="stylesheet" href="assets/css/modernist.css">
 <link rel="stylesheet" href="assets/css/app.css">
+<script src="vendor/leaflet/leaflet.js" defer></script>
 <script src="assets/js/marshal.js" type="module"></script>
 </head>
 <body class="page">
@@ -29,6 +31,13 @@
   </header>
 
   <main id="mbody">
+    <div id="mmapwrap">
+      <div id="mmap" role="application" aria-label="Peta kedudukan kumpulan"></div>
+      <button type="button" class="fab" id="btnMFit" title="Lihat semua" aria-label="Lihat semua kumpulan dan checkpoint">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+      </button>
+      <div class="stat" id="mposstat"></div>
+    </div>
     <div class="mhead">
       <div>
         <div class="t">Checkpoint</div>

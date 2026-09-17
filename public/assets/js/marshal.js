@@ -5,9 +5,15 @@
 
    Recording a group at MULA is what starts that group's clock. */
 
-import { getState, postCheckins } from './api.js';
+import { getState, postCheckins, getPositions } from './api.js';
 import { loadState, saveState, loadMarshal, saveMarshal, loadCheckinQueue, saveCheckinQueue, deviceId } from './store.js';
 import { askText, askChoice, askConfirm, notify, toast } from './ui.js';
+import { LAYERS, isStart, groupLabel } from './core.js';
+import { distM, fmtDist } from './geo.js';
+
+const POSITIONS_POLL_MS = 30 * 1000;
+const STALE_WARN_MS = 10 * 60 * 1000;
+const STALE_BAD_MS = 20 * 60 * 1000;
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, className, text) => {
@@ -26,9 +32,15 @@ let sent = [];   // delivered this session, kept so ticks stay visible
 let flushing = false;
 let lastDelivered = null;
 let lastError = '';
+let positions = [];        // [{ id, name, startedAt, last, checkins }] from the server
+let serverNow = Date.now();
 
 const pointById = (id) => state.points.find((p) => p.id === id);
 const pointName = (p) => (p.type === 'start' ? 'MULA (bertolak)' : p.name);
+const ago = (ms) => {
+  const m = Math.round(ms / 60000);
+  return m < 1 ? 'baru sahaja' : m + ' min lalu';
+};
 
 /* ── program state ──────────────────────────────────────────────────── */
 
@@ -37,14 +49,133 @@ async function syncState() {
     const next = await getState();
     state.version = next.version;
     state.points = next.points;
+    state.routes = next.routes || [];
     state.groups = next.groups;
     state.settings = next.settings || {};
     saveState(state);
+    drawProgram();
     return true;
   } catch {
     return false;
   }
 }
+
+/* ── map: the program, and where every group is right now ───────────── */
+
+const L = window.L;
+const map = L.map('mmap', { zoomControl: false, attributionControl: true });
+map.attributionControl.setPrefix(false);
+L.tileLayer(LAYERS.osm.template, { maxZoom: LAYERS.osm.maxZoom, attribution: LAYERS.osm.attribution }).addTo(map);
+map.setView([3.556879, 101.632263], 12);   // MULA, until the program has loaded
+
+const pointLayer = L.layerGroup().addTo(map);
+const routeLayer = L.layerGroup().addTo(map);
+const groupMarkers = {};
+let fitted = false;
+
+function pointIcon(p, i) {
+  const mine = p.id === point;
+  const label = isStart(p) ? 'M' : String(i);
+  return L.divIcon({
+    className: '',
+    html: `<div class="jl-marker${isStart(p) ? ' start' : ''}${mine ? ' mine' : ''}">${label}</div>`,
+    iconSize: [30, 30],
+    iconAnchor: [15, 15]
+  });
+}
+
+function drawProgram() {
+  pointLayer.clearLayers();
+  routeLayer.clearLayers();
+  let n = 0;
+  for (const p of state.points) {
+    if (!isStart(p)) n += 1;
+    L.marker([p.lat, p.lng], { icon: pointIcon(p, n), zIndexOffset: p.id === point ? 400 : 100, alt: p.name })
+      .bindPopup(`<div class="pop-name">${pointName(p)}</div>`)
+      .addTo(pointLayer);
+  }
+  for (const r of state.routes || []) {
+    L.polyline(r.latlngs, { color: '#ec3013', weight: 4, dashArray: '8 6', opacity: 0.9 }).addTo(routeLayer);
+  }
+  if (!fitted && state.points.length) fitAll();
+}
+
+function staleness(last) {
+  if (!last) return 'none';
+  const age = serverNow - last.at;
+  if (age >= STALE_BAD_MS) return 'bad';
+  if (age >= STALE_WARN_MS) return 'warn';
+  return 'ok';
+}
+
+function drawGroups() {
+  const seen = new Set();
+  positions.forEach((g, i) => {
+    if (!g.last) return;
+    seen.add(g.id);
+    const cls = (g.last.sos ? 'sos ' : '') + staleness(g.last);
+    const icon = L.divIcon({
+      className: '',
+      html: `<div class="jl-grp ${cls}">${groupLabel(g, i)}</div>`,
+      iconSize: [30, 30],
+      iconAnchor: [15, 15]
+    });
+    const ll = [g.last.lat, g.last.lng];
+    const here = pointById(point);
+    const popup = `<div class="pop-name">${g.last.sos ? 'SOS — ' : ''}${g.name}</div>` +
+      `<div class="pop-co">${ago(serverNow - g.last.at)}` +
+      (here ? ' · ' + fmtDist(distM(g.last, here)) + ' dari sini' : '') +
+      (g.last.source === 'sms' ? ' · via SMS' : '') + '</div>';
+    if (groupMarkers[g.id]) {
+      groupMarkers[g.id].setLatLng(ll).setIcon(icon).setPopupContent(popup);
+    } else {
+      groupMarkers[g.id] = L.marker(ll, { icon, zIndexOffset: 500, alt: g.name }).bindPopup(popup).addTo(map);
+    }
+  });
+  for (const id of Object.keys(groupMarkers)) {
+    if (!seen.has(id)) {
+      map.removeLayer(groupMarkers[id]);
+      delete groupMarkers[id];
+    }
+  }
+}
+
+function fitAll() {
+  const pts = state.points.map((p) => [p.lat, p.lng])
+    .concat(positions.filter((g) => g.last).map((g) => [g.last.lat, g.last.lng]));
+  if (!pts.length) return;
+  fitted = true;
+  map.fitBounds(L.latLngBounds(pts).pad(0.15), { maxZoom: 15 });
+}
+
+$('btnMFit').addEventListener('click', fitAll);
+
+let polling = false;
+async function pollPositions() {
+  if (polling || !pin || !navigator.onLine) return;
+  polling = true;
+  try {
+    const data = await getPositions(null, 0, { pin });
+    serverNow = data.now;
+    const first = !positions.length && data.groups.some((g) => g.last);
+    positions = data.groups;
+    if (first) fitted = false;   // the first fixes widen the picture; frame them once
+    const sos = positions.filter((g) => g.last && g.last.sos);
+    $('mposstat').textContent = (sos.length ? 'SOS ' + sos.map((g) => g.name).join(', ') + ' · ' : '') +
+      'Kedudukan ' + clock(Date.now());
+    $('mposstat').classList.toggle('bad', sos.length > 0);
+    drawGroups();
+    if (!fitted) fitAll();
+    render();
+  } catch (err) {
+    $('mposstat').textContent = 'Kedudukan: ' + err.message;
+  } finally {
+    polling = false;
+  }
+}
+setInterval(pollPositions, POSITIONS_POLL_MS);
+// Silence is measured against the server clock; keep it moving between polls.
+setInterval(() => { serverNow += 30 * 1000; drawGroups(); }, 30 * 1000);
 
 /* ── PIN + point ────────────────────────────────────────────────────── */
 
@@ -97,6 +228,8 @@ async function choosePoint() {
   if (!id) return;
   point = id;
   saveMarshal({ point });
+  drawProgram();
+  drawGroups();
   render();
 }
 
@@ -166,8 +299,10 @@ async function flush() {
   }
 }
 
-window.addEventListener('online', flush);
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { syncState().then(render); flush(); } });
+window.addEventListener('online', () => { flush(); pollPositions(); });
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') { syncState().then(render); flush(); pollPositions(); }
+});
 setInterval(flush, 60 * 1000);
 setInterval(() => syncState().then(render), 5 * 60 * 1000);
 
@@ -196,14 +331,18 @@ function render() {
     return;
   }
   const here = recordedHere();
+  const seen = new Map(positions.map((g) => [g.id, g.last]));
   state.groups.forEach((g, i) => {
     const at = here.get(g.id);
-    const row = el('div', 'row grp' + (at ? ' done' : ''));
-    const m = /\d+/.exec(g.name || '');
-    row.append(el('span', 'badge outline', m ? m[0] : String(i + 1)));
+    const last = seen.get(g.id);
+    const row = el('div', 'row grp' + (at ? ' done' : '') + (last && last.sos ? ' sos' : ''));
+    row.append(el('span', 'badge outline', groupLabel(g, i)));
     const text = el('span', 'grow');
-    text.append(el('span', 'nm', g.name), el('br'),
-      el('span', 'co', at ? 'Tiba ' + clock(at) : 'Belum tiba'));
+    const where = last
+      ? fmtDist(distM(last, p)) + ' dari sini · ' + ago(serverNow - last.at) + (last.sos ? ' · SOS' : '')
+      : 'Belum ada kedudukan';
+    text.append(el('span', 'nm', (last && last.sos ? 'SOS — ' : '') + g.name), el('br'),
+      el('span', 'co', (at ? 'Tiba ' + clock(at) : 'Belum tiba') + ' · ' + where));
     row.append(text);
     const button = el('button', 'jl-btn' + (at ? ' sm' : ' acc big'), at ? 'Lagi' : 'Tiba');
     button.type = 'button';
@@ -231,10 +370,12 @@ if ('serviceWorker' in navigator) {
 /* ── init ───────────────────────────────────────────────────────────── */
 
 render();
+drawProgram();
 (async () => {
   await syncState();
   await ensurePin();
   render();
   if (!point) await choosePoint();
   flush();
+  pollPositions();
 })();

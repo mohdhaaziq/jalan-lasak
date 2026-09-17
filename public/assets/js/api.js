@@ -11,10 +11,11 @@ export class ApiError extends Error {
 
 const BASE = 'api/';
 
-async function call(path, { method = 'GET', body, key } = {}) {
+async function call(path, { method = 'GET', body, key, pin } = {}) {
   const headers = {};
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   if (key) headers.Authorization = 'Bearer ' + key;
+  else if (pin) headers['X-Marshal-Pin'] = pin;
 
   let response;
   try {
@@ -60,9 +61,13 @@ export const postPositions = (group, device, items, { pin, key } = {}) =>
 export const loginGroup = (pin) =>
   call('groups/login', { method: 'POST', body: { pin } });
 
-/** Command centre: every group's latest fix, plus up to `trail` recent ones. */
-export const getPositions = (key, trail = 0) =>
-  call('positions' + (trail ? `?trail=${trail}` : ''), { key });
+/**
+ * Every group's latest fix, plus up to `trail` recent ones. The command
+ * centre passes its key; a marshal phone passes { pin } instead and gets
+ * the same answer without the groups' PINs.
+ */
+export const getPositions = (key, trail = 0, { pin } = {}) =>
+  call('positions' + (trail ? `?trail=${trail}` : ''), { key, pin });
 
 /** Command centre: the SMS fallback number and/or the marshal PIN. */
 export const putSettings = (key, settings) =>

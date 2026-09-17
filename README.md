@@ -6,11 +6,11 @@ peranan:
 | | **Peserta** (`/`) | **Marshal** (`/marshal.html`, PIN) | **Pusat kawalan** (`/pusat.html`, kunci) |
 | --- | --- | --- | --- |
 | Checkpoint & laluan | lihat sahaja — kemas kini automatik | — | tambah, seret, namakan, jadual; lukis laluan |
-| Kedudukan | telefon kumpulan hantar sendiri (masuk dengan **PIN kumpulan**) | — | peta + senarai semua kumpulan, jejak, "kali terakhir dilihat"; PIN setiap kumpulan |
+| Kedudukan | telefon kumpulan hantar sendiri (masuk dengan **PIN kumpulan**) | peta kedudukan semasa semua kumpulan, jarak dari CP-nya | peta + senarai semua kumpulan, jejak, "kali terakhir dilihat"; PIN setiap kumpulan |
 | Daftar masuk | — | catat setiap kumpulan yang tiba di CP-nya | catat sendiri (dari radio), lihat semua |
 | Jadual | lihat jangkaan tiba | — | tetapkan; amaran bila kumpulan **lewat** |
 | Kecemasan | butang **SOS**, sandaran **SMS** | — | amaran merah, bunyi & getar; masuk SMS secara manual |
-| Peta offline | ya — simpan kawasan sebelum keluar liputan | tak perlu peta | ya |
+| Peta offline | ya — simpan kawasan sebelum keluar liputan | tile yang pernah dilihat sahaja | ya |
 
 Satu telefon setiap kumpulan: ketua kumpulan buka app, masuk sekali dengan
 **PIN 6 digit kumpulannya** (dijana rawak oleh pelayan bila pusat kawalan
@@ -201,7 +201,7 @@ design/                 bundle serahan Claude Design (rujukan)
 | POST | `/api/groups/login` | telefon | `{ pin }` → kumpulan yang memiliki PIN itu |
 | PUT | `/api/settings` | kunci | nombor SMS, PIN marshal |
 | POST | `/api/positions` | telefon (PIN kumpulan) atau kunci | hantar sekumpulan kedudukan (`source: 'sms'` untuk yang ditaip) |
-| GET | `/api/positions?trail=N` | kunci | kedudukan terkini, daftar masuk, masa mula dan PIN setiap kumpulan + N jejak |
+| GET | `/api/positions?trail=N` | kunci **atau** PIN | kedudukan terkini, daftar masuk dan masa mula setiap kumpulan + N jejak; PIN kumpulan hanya untuk kunci |
 | POST | `/api/checkins` | kunci **atau** PIN | catat kumpulan tiba di titik; tiba di MULA memulakan jam kumpulan |
 
 Kunci dihantar sebagai `Authorization: Bearer <CC_KEY>`; PIN marshal sebagai
@@ -214,7 +214,7 @@ Melayu dan dipaparkan terus dalam app.
 
 | Cache | Isi | Dibuang bila |
 | --- | --- | --- |
-| `jl-shell-v7` | fail app + salinan terakhir `/api/state` | versi baharu digunakan |
+| `jl-shell-v8` | fail app + salinan terakhir `/api/state` | versi baharu digunakan |
 | `jl-tiles-v1` | tile yang **sengaja** disimpan | hanya melalui butang *Kosongkan* |
 | `jl-tiles-auto-v1` | tile yang terpapar semasa melayari | automatik, melebihi 1500 tile |
 
