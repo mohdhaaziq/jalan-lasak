@@ -10,7 +10,7 @@ peranan:
 | Daftar masuk | — | catat setiap kumpulan yang tiba di CP-nya | catat sendiri (dari radio), lihat semua |
 | Jadual | lihat jangkaan tiba | — | tetapkan; amaran bila kumpulan **lewat** |
 | Kecemasan | butang **SOS**, sandaran **SMS** | — | amaran merah, bunyi & getar; masuk SMS secara manual |
-| Peta offline | ya — simpan kawasan sebelum keluar liputan | tile yang pernah dilihat sahaja | ya |
+| Peta offline | ya — satu butang simpan **seluruh kawasan program** pada zum paling dalam yang muat | tile yang pernah dilihat sahaja | ya |
 
 Satu telefon setiap kumpulan: ketua kumpulan buka app, masuk sekali dengan
 **PIN 6 digit kumpulannya** (dijana rawak oleh pelayan bila pusat kawalan
@@ -154,7 +154,8 @@ directory `public`. Binding dan secret ditetapkan sekali dalam tetapan projek.
 5. Setiap marshal buka `/marshal.html` di telefonnya semasa ada talian,
    masukkan PIN, pilih checkpoint-nya.
 6. Setiap ketua kumpulan buka `/` di telefonnya semasa masih ada talian,
-   masuk dengan PIN kumpulannya, tekan **Simpan kawasan ini** untuk peta offline, dan
+   masuk dengan PIN kumpulannya, tekan **Simpan kawasan ini** untuk peta offline
+   (seluruh kawasan program, zum paling dalam yang muat dalam ± 70 MB), dan
    **Kekalkan skrin hidup**. Tambah ke skrin utama (*Add to Home Screen*).
 7. Bila kumpulan bertolak: marshal di MULA tekan *Tiba* untuk kumpulan itu
    (mula jam kumpulan), atau pusat kawalan tekan *Mula* / *Mula semua*.
@@ -206,7 +207,7 @@ design/                 bundle serahan Claude Design (rujukan)
 
 | Kaedah | Laluan | Siapa | Kegunaan |
 | --- | --- | --- | --- |
-| GET | `/api/state` | semua | checkpoint (+ jadual), laluan, kumpulan (+ masa mula), tetapan, versi. Kunci / PIN marshal: semua titik; `X-Group-Pin`: titik yang didedahkan + `progress`; tanpa apa-apa: MULA sahaja |
+| GET | `/api/state` | semua | checkpoint (+ jadual), laluan, kumpulan (+ masa mula), tetapan, versi, `area` (kotak semua titik + laluan, tambah 1.5 km, untuk peta offline). Kunci / PIN marshal: semua titik; `X-Group-Pin`: titik yang didedahkan + `progress`; tanpa apa-apa: MULA sahaja |
 | PUT | `/api/state` | kunci | ganti checkpoint + laluan |
 | PUT | `/api/groups` | kunci | ganti senarai kumpulan; masa mula dan PIN dikekalkan jika tidak dihantar, `resetPin: true` jana PIN baharu; pulang PIN setiap kumpulan |
 | POST | `/api/groups/login` | telefon | `{ pin }` → kumpulan yang memiliki PIN itu |
@@ -225,7 +226,7 @@ Melayu dan dipaparkan terus dalam app.
 
 | Cache | Isi | Dibuang bila |
 | --- | --- | --- |
-| `jl-shell-v9` | fail app + salinan terakhir `/api/state` | versi baharu digunakan |
+| `jl-shell-v10` | fail app + salinan terakhir `/api/state` | versi baharu digunakan |
 | `jl-tiles-v1` | tile yang **sengaja** disimpan | hanya melalui butang *Kosongkan* |
 | `jl-tiles-auto-v1` | tile yang terpapar semasa melayari | automatik, melebihi 1500 tile |
 

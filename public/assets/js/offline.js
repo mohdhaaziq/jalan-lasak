@@ -9,7 +9,7 @@
    Requests are made in no-cors mode, the way Leaflet's <img> tiles are, so the
    cached entries match what the map asks for later. */
 
-import { tilesForBounds, tileUrl } from './geo.js';
+import { tilesForBounds, tileUrl, countTiles } from './geo.js';
 
 /** Tiles the user deliberately saved. The service worker reads this first. */
 export const TILE_CACHE = 'jl-tiles-v1';
@@ -59,6 +59,24 @@ export async function clearTiles() {
   } catch {
     return false;
   }
+}
+
+/**
+ * The deepest zoom at which `bounds` still fits in `budget` tiles across
+ * zMin…z for every source, capped by each source's maxZoom. Falls back to
+ * zMin when even that is over budget — the area is then saved coarsely
+ * rather than not at all.
+ */
+export function deepestZoom(bounds, zMin, sources, budget) {
+  const cap = Math.max(...sources.map((s) => s.maxZoom));
+  for (let z = cap; z > zMin; z--) {
+    let total = 0;
+    for (const source of sources) {
+      for (let level = zMin; level <= Math.min(z, source.maxZoom); level++) total += countTiles(bounds, level);
+    }
+    if (total <= budget) return z;
+  }
+  return zMin;
 }
 
 /**

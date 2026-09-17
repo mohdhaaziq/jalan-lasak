@@ -8,7 +8,7 @@
 import { distM, bearing, fmtDist, pathKm } from './geo.js';
 import { DEFAULT_POINTS, loadState, saveState, loadTarget, saveTarget, loadPrefs, savePrefs } from './store.js';
 import { notify, toast, askConfirm } from './ui.js';
-import { planTiles, precacheTiles, cachedTileCount, clearTiles, approxSize } from './offline.js';
+import { planTiles, precacheTiles, cachedTileCount, clearTiles, approxSize, deepestZoom } from './offline.js';
 import { etaLabel } from './schedule.js';
 
 export const $ = (id) => document.getElementById(id);
@@ -524,25 +524,49 @@ export function boot({ editable = false } = {}) {
     return sources;
   }
 
+  /**
+   * The whole program's ground: the server's padded box around every point
+   * and route (so a participant gets the area before later checkpoints are
+   * revealed), or, failing that, a box around the points this phone holds.
+   */
+  function programBounds() {
+    const a = state.area;
+    if (a && Number.isFinite(a.south)) return L.latLngBounds([a.south, a.west], [a.north, a.east]);
+    if (!state.points.length) return null;
+    return L.latLngBounds(state.points.map((p) => [p.lat, p.lng])).pad(0.25);
+  }
+
+  const OFFLINE_ZMIN = 11;          // an overview of the district
+  const OFFLINE_TILE_BUDGET = 3500; // ≈ 70 MB; the deepest zoom is chosen to fit this
+
   btnCache.addEventListener('click', async () => {
     if (!('caches' in window)) {
       notify({ title: 'Tidak disokong', body: 'Pelayar ini tidak menyokong storan peta offline.' });
       return;
     }
-    const zMin = Math.max(10, Math.round(map.getZoom()));
-    const zMax = Math.min(zMin + 2, 17);
-    const urls = planTiles(map.getBounds(), zMin, zMax, activeSources());
+    const bounds = programBounds();
+    if (!bounds) {
+      notify({ title: 'Tiada kawasan', body: 'Peta program belum dimuat turun. Cuba bila ada isyarat.' });
+      return;
+    }
+    // Always the program area, never whatever happens to be on screen, and
+    // as deep as the tile budget allows — trail detail matters more than reach.
+    const sources = activeSources();
+    const zMin = OFFLINE_ZMIN;
+    const zMax = deepestZoom(bounds, zMin, sources, OFFLINE_TILE_BUDGET);
+    const urls = planTiles(bounds, zMin, zMax, sources);
 
     if (!urls.length) {
-      notify({ title: 'Tiada tile', body: 'Zum masuk sedikit dahulu, kemudian cuba lagi.' });
+      notify({ title: 'Tiada tile', body: 'Tiada apa untuk disimpan bagi kawasan ini.' });
       return;
     }
     const ok = await askConfirm({
-      title: 'Simpan kawasan ini?',
-      body: `${urls.length} tile (zum ${zMin}–${zMax}, lapisan ${LAYERS[currentBase].label}) — lebih kurang ${approxSize(urls.length)}. Perlukan talian sekarang.`,
+      title: 'Simpan peta kawasan program?',
+      body: `Seluruh kawasan checkpoint dan laluan, zum ${zMin}–${zMax} (paling dalam yang muat), lapisan ${LAYERS[currentBase].label}${sources.length > 1 ? ' + kontur' : ''} — ${urls.length} tile, lebih kurang ${approxSize(urls.length)}. Perlukan talian sekarang.`,
       okLabel: 'Simpan'
     });
     if (!ok) return;
+    map.fitBounds(bounds, { padding: [10, 10] });
 
     btnCache.disabled = true;
     btnCacheClear.disabled = true;
@@ -633,6 +657,7 @@ export function boot({ editable = false } = {}) {
     state.groups = Array.isArray(next.groups) ? next.groups : state.groups;
     state.settings = next.settings && typeof next.settings === 'object' ? next.settings : state.settings;
     state.progress = next.progress && typeof next.progress === 'object' ? next.progress : null;
+    if ('area' in next) state.area = next.area && typeof next.area === 'object' ? next.area : null;
     if (!findPoint(targetId)) {
       const start = startPoint();
       targetId = start ? start.id : '';

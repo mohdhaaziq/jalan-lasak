@@ -102,15 +102,16 @@ export function loadState() {
       routes: Array.isArray(cached.routes) ? cached.routes : [],
       groups: Array.isArray(cached.groups) ? cached.groups : [],
       settings: cached.settings && typeof cached.settings === 'object' ? cached.settings : {},
-      progress: cached.progress && typeof cached.progress === 'object' ? cached.progress : null
+      progress: cached.progress && typeof cached.progress === 'object' ? cached.progress : null,
+      area: cached.area && typeof cached.area === 'object' ? cached.area : null
     };
   }
-  return { version: 0, points: loadPoints(), routes: loadRoutes(), groups: [], settings: {}, progress: null };
+  return { version: 0, points: loadPoints(), routes: loadRoutes(), groups: [], settings: {}, progress: null, area: null };
 }
 
 export const saveState = (state) => write(KEY_STATE, {
   version: state.version, points: state.points, routes: state.routes, groups: state.groups,
-  settings: state.settings, progress: state.progress || null
+  settings: state.settings, progress: state.progress || null, area: state.area || null
 });
 
 /* ── participant identity ─────────────────────────────────────────────── */

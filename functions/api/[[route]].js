@@ -19,7 +19,7 @@
    The command centre and marshals see everything; anyone else, MULA only.
 
    Routes
-     GET  /api/state              { version, points, routes, groups, settings, progress? }
+     GET  /api/state              { version, points, routes, groups, settings, area, progress? }
                                   CC key / marshal PIN: all points · X-Group-Pin: revealed points · else MULA only
      PUT  /api/state              { points, routes }  → { version }               CC
      PUT  /api/groups             { groups }  → { version, groups:[{id,pin}] }    CC
@@ -42,6 +42,7 @@ const MAX_NAME = 120;
 const MAX_NOTE = 200;
 const CLOCK_SLACK_MS = 7 * 24 * 3600 * 1000;
 const REACHED_M = 100;      // a fix this close to a point counts as arriving there
+const AREA_PAD_M = 1500;    // margin around the program's points and routes for the offline map
 
 /* ── helpers ──────────────────────────────────────────────────────────── */
 
@@ -216,6 +217,28 @@ async function stateRole(request, env) {
   return { role: 'public' };
 }
 
+/**
+ * The box every point and route falls in, padded. Sent to every role so a
+ * participant phone can store the whole program's map before setting off,
+ * without being told where the checkpoints it has not reached are.
+ */
+function programArea(points, routes) {
+  let s = Infinity, w = Infinity, n = -Infinity, e = -Infinity;
+  const take = (lat, lng) => {
+    if (lat < s) s = lat;
+    if (lat > n) n = lat;
+    if (lng < w) w = lng;
+    if (lng > e) e = lng;
+  };
+  for (const p of points) take(p.lat, p.lng);
+  for (const r of routes) for (const ll of r.latlngs) take(ll[0], ll[1]);
+  if (!Number.isFinite(s)) return null;
+  const dLat = AREA_PAD_M / 111320;
+  const dLng = AREA_PAD_M / (111320 * Math.cos((s + n) / 2 * Math.PI / 180));
+  const r5 = (v) => Math.round(v * 1e5) / 1e5;
+  return { south: r5(s - dLat), west: r5(w - dLng), north: r5(n + dLat), east: r5(e + dLng) };
+}
+
 /* ── state ────────────────────────────────────────────────────────────── */
 
 async function getState(request, env) {
@@ -230,6 +253,8 @@ async function getState(request, env) {
     getSettings(db)
   ]);
   let points = pointRows.results.map((p) => ({ ...p, etaMin: p.eta_min, eta_min: undefined }));
+  const routeList = routes.results.map((r) => ({ ...r, latlngs: JSON.parse(r.latlngs) }));
+  const area = programArea(points, routeList);
   let progress;
   if (who.role === 'group') {
     const pr = await progressFor(db, who.group, points);
@@ -243,9 +268,10 @@ async function getState(request, env) {
   return json({
     version,
     points,
-    routes: routes.results.map((r) => ({ ...r, latlngs: JSON.parse(r.latlngs) })),
+    routes: routeList,
     groups: groups.results.map((g) => ({ id: g.id, name: g.name, startedAt: g.started_at })),
     settings,
+    area,
     ...(progress ? { progress } : {})
   });
 }

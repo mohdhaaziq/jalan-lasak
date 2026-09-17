@@ -69,6 +69,16 @@ export function tilesForBounds(bounds, zMin, zMax) {
   return tiles;
 }
 
+/** How many tiles cover `bounds` at zoom `z`, without listing them. */
+export function countTiles(bounds, z) {
+  const max = 2 ** z - 1;
+  const x0 = Math.max(0, lngToTileX(bounds.getWest(), z));
+  const x1 = Math.min(max, lngToTileX(bounds.getEast(), z));
+  const y0 = Math.max(0, latToTileY(bounds.getNorth(), z));
+  const y1 = Math.min(max, latToTileY(bounds.getSouth(), z));
+  return (x1 - x0 + 1) * (y1 - y0 + 1);
+}
+
 /** Fill {s}/{x}/{y}/{z} in a tile URL template. */
 export function tileUrl(template, { z, x, y }, subdomains) {
   const s = subdomains && subdomains.length
