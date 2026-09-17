@@ -110,10 +110,13 @@ talian:
    Pusat kawalan juga boleh mencatat sendiri (*Tiba* pada baris kumpulan)
    bila marshal melapor melalui walkie-talkie. Sampai di CP juga dikesan dari
    GPS (dalam 100 m) sebagai sandaran.
-3. **Sandaran SMS.** SMS lalu pada isyarat yang jauh lebih lemah daripada
-   data. *Hantar melalui SMS* pada telefon peserta membuka app mesej dengan
+3. **Sandaran SMS, sebahagian daripada aliran SOS.** SMS lalu pada isyarat
+   yang jauh lebih lemah daripada data. Butang **SOS** menghantar melalui
+   internet bila ada talian; bila tiada, app **terus membuka SMS** dengan
    teks siap — `JL K3 3.54012,101.65123 12:04 SOS` — ke nombor yang pusat
-   kawalan tetapkan (*Tetapan*). Pusat kawalan tampal teks itu ke *Masuk SMS*;
+   kawalan tetapkan (*Tetapan*), dan sepanduk SOS menunjukkan saluran mana
+   yang digunakan. Di luar SOS, butang *Hantar kedudukan melalui SMS* hanya
+   muncul bila tiada talian. Pusat kawalan tampal teks itu ke *Masuk SMS*;
    kumpulan, koordinat dan SOS dibaca automatik dan dipaparkan seperti
    kedudukan biasa, bertanda *via SMS*.
 
@@ -268,7 +271,7 @@ Melayu dan dipaparkan terus dalam app.
 
 | Cache | Isi | Dibuang bila |
 | --- | --- | --- |
-| `jl-shell-v23` | fail app + salinan terakhir `/api/state` | versi baharu digunakan |
+| `jl-shell-v24` | fail app + salinan terakhir `/api/state` | versi baharu digunakan |
 | `jl-tiles-v1` | tile yang **sengaja** disimpan | hanya melalui butang *Kosongkan* |
 | `jl-tiles-auto-v1` | tile yang terpapar semasa melayari | automatik, melebihi 1500 tile |
 

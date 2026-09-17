@@ -304,38 +304,88 @@ function renderGroup() {
   const mine = core.state.groups.find((g) => g.id === group) || null;
   const known = !!mine && !!groupPin;
   $('grpname').textContent = known ? mine.name : (group ? 'Masuk semula dengan PIN' : 'Belum masuk');
-  $('btnGroup').textContent = known ? 'Tukar kumpulan' : 'Masuk dengan PIN';
-  $('btnSend').disabled = !known;
+  $('btnLogin').hidden = known;
+  $('btnLogin').textContent = group && !known ? 'Masuk semula dengan PIN' : 'Masuk dengan PIN';
+  $('btnSend').hidden = !known;
+  $('btnGroup').hidden = !known;
+  $('btnGroup').textContent = known ? 'Bukan ' + mine.name + '? Tukar' : '';
   $('btnSOS').disabled = !known;
-  const smsNumber = (core.state.settings || {}).smsNumber;
-  $('btnSms').disabled = !known || !smsNumber;
-  $('btnSms').title = smsNumber ? 'SMS ke ' + smsNumber : 'Pusat kawalan belum tetapkan nombor SMS';
+  renderNet();
   // ETAs in the checkpoint list become clock times once this group has set off.
   core.setScheduleStart(mine ? mine.startedAt : null);
 }
 
-/* ── SMS fallback: works on far weaker signal than data ─────────────── */
+/* ── one emergency flow: data when there is a line, SMS when there is not ── */
 
-$('btnSms').addEventListener('click', async () => {
-  const smsNumber = (core.state.settings || {}).smsNumber;
+const smsNumber = () => (core.state.settings || {}).smsNumber || '';
+const smsReady = () => !!smsNumber() && !!groupPin && core.state.groups.some((g) => g.id === group);
+
+/** The text the command centre's SMS parser reads: group, position, time, SOS. */
+function smsText(fix, sos) {
   const mine = core.state.groups.find((g) => g.id === group);
-  if (!smsNumber || !mine) return;
+  const index = core.state.groups.indexOf(mine);
+  return 'JL K' + groupLabel(mine, index) + ' ' + fix.lat.toFixed(5) + ',' + fix.lng.toFixed(5) +
+    ' ' + clock(fix.at) + (sos ? ' SOS' : '');
+}
+
+/** Open the phone's messaging app with the position (and SOS) filled in. */
+async function openSms(sos) {
+  if (!smsReady()) {
+    notify({ title: 'SMS tidak tersedia', body: 'Pusat kawalan belum menetapkan nombor SMS.' });
+    return false;
+  }
   let fix = reporter.lastFix();
   if (!fix) {
     toast('Mencari GPS…');
     fix = await reporter.sendNow();
     if (!fix) {
       notify({ title: 'GPS belum dapat', body: 'Cuba di kawasan terbuka, kemudian tekan sekali lagi.' });
-      return;
+      return false;
     }
   }
-  const index = core.state.groups.indexOf(mine);
-  const body = 'JL K' + groupLabel(mine, index) + ' ' + fix.lat.toFixed(5) + ',' + fix.lng.toFixed(5) +
-    ' ' + clock(fix.at) + (reporter.isSOS() ? ' SOS' : '');
   // iOS wants "&body=", Android "?body=".
   const ios = /iP(hone|ad|od)/.test(navigator.userAgent);
-  window.location.href = 'sms:' + smsNumber + (ios ? '&' : '?') + 'body=' + encodeURIComponent(body);
-});
+  window.location.href = 'sms:' + smsNumber() + (ios ? '&' : '?') + 'body=' + encodeURIComponent(smsText(fix, sos));
+  return true;
+}
+
+$('btnSms').addEventListener('click', () => openSms(reporter.isSOS()));
+$('btnSosSms').addEventListener('click', () => openSms(true));
+
+/* — status line: what the phone has managed to deliver, and what to do about it — */
+
+let lastStatus = { sos: false, queued: 0, lastDeliveredAt: null, error: '' };
+let sosAt = null;          // when SOS was raised on this phone
+let sosSmsOffered = false; // the SMS app was opened for this SOS already
+
+const noLine = () => !navigator.onLine || (!!lastStatus.error && !lastStatus.error.startsWith('GPS'));
+
+function renderNet() {
+  const s = lastStatus;
+  const el = $('repstat');
+  let cls = '';
+  let text;
+  if (s.error && s.error.startsWith('GPS')) {
+    cls = 'bad';
+    text = s.error + ' — pergi ke kawasan terbuka';
+  } else if (noLine()) {
+    cls = 'warn';
+    text = (s.queued ? s.queued + ' kedudukan dalam giliran · ' : '') + 'tiada talian';
+    if (s.lastDeliveredAt) text += ' · terakhir dihantar ' + clock(s.lastDeliveredAt);
+  } else if (s.lastDeliveredAt) {
+    cls = 'ok';
+    text = 'Kedudukan dihantar ' + clock(s.lastDeliveredAt) + (s.queued ? ' · ' + s.queued + ' dalam giliran' : '');
+  } else {
+    text = groupPin ? 'Belum ada kedudukan dihantar' : 'Masuk dengan PIN untuk mula menghantar kedudukan';
+  }
+  el.className = 'status ' + cls;
+  el.querySelector('.t').textContent = text;
+  $('smsrow').hidden = !(noLine() && smsReady());
+  syncSOS();
+}
+
+window.addEventListener('online', renderNet);
+window.addEventListener('offline', renderNet);
 
 /* ── reporter ───────────────────────────────────────────────────────── */
 
@@ -349,14 +399,8 @@ const reporter = createReporter({
     core.setMyPos(fix, fix.acc);
   },
   onStatus: (s) => {
-    const bits = [];
-    if (s.lastDeliveredAt) bits.push('Dihantar ' + clock(s.lastDeliveredAt));
-    else bits.push('Belum dihantar');
-    if (s.queued) bits.push(s.queued + ' dlm giliran');
-    if (s.error) bits.push(s.error);
-    $('repstat').textContent = bits.join(' · ');
-    $('repstat').classList.toggle('bad', !!s.error);
-    syncSOS(s.sos);
+    lastStatus = s;
+    renderNet();
   },
   onGroupMissing: async () => {
     // Deleted, or its PIN was reset, at the command centre.
@@ -375,40 +419,65 @@ $('btnSend').addEventListener('click', async () => {
   toast('Menghantar kedudukan…');
   const fix = await reporter.sendNow();
   if (!fix) toast('GPS belum dapat — cuba di kawasan terbuka.');
+  else if (noLine()) toast(smsReady() ? 'Tiada talian — kedudukan beratur. Guna SMS di bawah jika perlu.' : 'Tiada talian — kedudukan beratur dan dihantar bila ada isyarat.', 5000);
 });
 
 $('btnGroup').addEventListener('click', chooseGroup);
+$('btnLogin').addEventListener('click', chooseGroup);
 
-/* ── SOS ────────────────────────────────────────────────────────────── */
+/* ── SOS: one button; the phone picks the channel ───────────────────── */
 
 const btnSOS = $('btnSOS');
 const sosBanner = $('sosbanner');
 
-function syncSOS(on) {
+function syncSOS() {
+  const on = lastStatus.sos;
   btnSOS.classList.toggle('on', on);
   btnSOS.setAttribute('aria-pressed', String(on));
-  sosBanner.style.display = on ? 'block' : 'none';
+  sosBanner.style.display = on ? 'flex' : 'none';
+  document.body.classList.toggle('sos-on', on);
+  if (!on) return;
+  const delivered = lastStatus.lastDeliveredAt && sosAt && lastStatus.lastDeliveredAt >= sosAt;
+  let text;
+  if (delivered) text = 'SOS dihantar ' + clock(lastStatus.lastDeliveredAt) + ' · pusat kawalan dimaklumkan · tekan SOS untuk batal';
+  else if (noLine()) text = smsReady() ? 'SOS aktif · tiada talian data · hantar melalui SMS' : 'SOS aktif · tiada talian · dihantar sebaik ada isyarat · gunakan wisel';
+  else text = 'SOS aktif · menghantar…';
+  $('sostext').textContent = text;
+  $('btnSosSms').hidden = !(noLine() && smsReady() && !delivered);
 }
 
 btnSOS.addEventListener('click', async () => {
   if (reporter.isSOS()) {
     const ok = await askConfirm({ title: 'Batalkan SOS?', body: 'Pusat kawalan akan dimaklumkan yang keadaan sudah selamat.', okLabel: 'Batalkan SOS' });
-    if (ok) reporter.setSOS(false);
+    if (!ok) return;
+    sosAt = null;
+    sosSmsOffered = false;
+    await reporter.setSOS(false);
+    if (noLine() && smsReady()) toast('Tiada talian — beritahu pusat kawalan melalui SMS atau radio yang keadaan selamat.', 5000);
     return;
   }
   const ok = await askConfirm({
     title: 'Hantar SOS?',
-    body: 'Lokasi telefon ini akan dihantar serta-merta dan ditanda SOS di pusat kawalan. Gunakan bila ada kecemasan sebenar.',
+    body: 'Lokasi telefon ini dihantar serta-merta dan ditanda SOS di pusat kawalan — melalui internet, atau melalui SMS jika tiada talian data. Gunakan bila ada kecemasan sebenar.',
     okLabel: 'Hantar SOS'
   });
   if (!ok) return;
-  reporter.setSOS(true);
-  toast('SOS dihantar. Kekalkan app terbuka.', 6000);
+  sosAt = Date.now();
+  sosSmsOffered = false;
+  await reporter.setSOS(true);
+  const delivered = lastStatus.lastDeliveredAt && lastStatus.lastDeliveredAt >= sosAt;
+  if (delivered) {
+    toast('SOS dihantar. Kekalkan app terbuka.', 6000);
+  } else if (smsReady()) {
+    // No line for data: fall straight through to SMS with the same fix.
+    sosSmsOffered = true;
+    toast('Tiada talian data — membuka SMS untuk SOS…', 5000);
+    await openSms(true);
+  } else {
+    toast('Tiada talian — SOS beratur dan dihantar sebaik ada isyarat. Gunakan wisel.', 7000);
+  }
+  syncSOS();
 });
-
-/* ── bottom tab bar ─────────────────────────────────────────────────── */
-
-mountTabs({ map: core.map, storageKey: 'jl_tab_peserta', defaultPane: 'kumpulan' });
 
 /* ── keep the screen on ─────────────────────────────────────────────── */
 
@@ -434,7 +503,6 @@ function syncWake() {
   const on = !!wakeLock;
   btnWake.classList.toggle('on', on);
   btnWake.setAttribute('aria-pressed', String(on));
-  btnWake.textContent = on ? 'Skrin kekal hidup' : 'Kekalkan skrin hidup';
 }
 
 btnWake.addEventListener('click', async () => {

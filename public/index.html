@@ -31,7 +31,10 @@
 
   <div id="map" role="application" aria-label="Peta program Jalan Lasak"></div>
 
-  <div id="sosbanner" role="alert">SOS dihantar — kekalkan app terbuka. Tekan SOS sekali lagi untuk batal.</div>
+  <div id="sosbanner" role="alert">
+    <span id="sostext">SOS aktif</span>
+    <button type="button" class="jl-btn on-ink sm" id="btnSosSms" hidden>Hantar melalui SMS</button>
+  </div>
 
   <div id="fabs">
     <button type="button" class="fab" id="btnLocate" title="Lokasi saya" aria-label="Lokasi saya" aria-pressed="false">
@@ -60,17 +63,24 @@
     <div id="panes">
       <section class="pane" id="pane-kumpulan" role="tabpanel" aria-labelledby="tab-kumpulan">
         <div id="report">
-          <div class="who">
-            <span class="n" id="grpname">Belum masuk</span>
-            <span class="stat" id="repstat">Belum dihantar</span>
-          </div>
+          <div class="who"><span class="n" id="grpname">Belum masuk</span></div>
+          <div class="status" id="repstat"><span class="dot" aria-hidden="true"></span><span class="t">Belum ada kedudukan dihantar</span></div>
           <div class="acts">
-            <button type="button" class="jl-btn acc" id="btnSend" disabled>Hantar sekarang</button>
-            <button type="button" class="jl-btn" id="btnWake" aria-pressed="false">Kekalkan skrin hidup</button>
-            <button type="button" class="jl-btn" id="btnGroup">Masuk dengan PIN</button>
-            <button type="button" class="jl-btn" id="btnSms" disabled>Hantar melalui SMS</button>
+            <button type="button" class="jl-btn acc wide" id="btnSend" hidden>Hantar kedudukan sekarang</button>
+            <button type="button" class="jl-btn acc wide" id="btnLogin">Masuk dengan PIN</button>
           </div>
-          <div class="stat" id="statestat"></div>
+          <button type="button" class="check" id="btnWake" aria-pressed="false">
+            <span class="box" aria-hidden="true"></span>
+            <span><b>Kekalkan skrin hidup</b> — wajib sepanjang perjalanan. Skrin padam bermakna kedudukan tidak dihantar.</span>
+          </button>
+          <div id="smsrow" hidden>
+            <div class="desc">Tiada talian data. SMS masih boleh sampai pada isyarat yang lemah.</div>
+            <button type="button" class="jl-btn" id="btnSms">Hantar kedudukan melalui SMS</button>
+          </div>
+          <div class="foot-line">
+            <span class="stat" id="statestat"></span>
+            <button type="button" class="link" id="btnGroup" hidden>Tukar kumpulan</button>
+          </div>
         </div>
       </section>
 
