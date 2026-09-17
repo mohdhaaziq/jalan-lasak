@@ -236,7 +236,8 @@ public/                 laman statik (Cloudflare Pages)
 functions/api/[[route]].js   API — satu Pages Function
 schema.sql              jadual D1
 wrangler.toml           konfigurasi Pages + binding D1
-tools/make-icons.py     jana semula ikon app
+tools/icon.svg          sumber ikon app (Modernist: petak MULA merah, jejak putus, petak checkpoint)
+tools/make-icons.js     jana semula ikon (PNG 512/192/180 + maskable) dengan Chrome headless, tanpa npm
 design/                 bundle serahan Claude Design (rujukan)
 ```
 
@@ -263,7 +264,7 @@ Melayu dan dipaparkan terus dalam app.
 
 | Cache | Isi | Dibuang bila |
 | --- | --- | --- |
-| `jl-shell-v15` | fail app + salinan terakhir `/api/state` | versi baharu digunakan |
+| `jl-shell-v16` | fail app + salinan terakhir `/api/state` | versi baharu digunakan |
 | `jl-tiles-v1` | tile yang **sengaja** disimpan | hanya melalui butang *Kosongkan* |
 | `jl-tiles-auto-v1` | tile yang terpapar semasa melayari | automatik, melebihi 1500 tile |
 
