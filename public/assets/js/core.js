@@ -284,12 +284,12 @@ export function boot({ editable = false } = {}) {
     const brgEl = $('tgtbrg');
 
     if (!target) {
-      nameEl.textContent = 'Sasaran: —';
+      nameEl.textContent = '—';
       distEl.textContent = '— km';
       brgEl.textContent = '—°';
       return;
     }
-    nameEl.textContent = 'Sasaran: ' + target.name;
+    nameEl.textContent = target.name;
 
     const origin = myPos || startPoint();
     if (!origin || origin === target) {
