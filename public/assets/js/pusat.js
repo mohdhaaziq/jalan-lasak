@@ -339,6 +339,67 @@ $('btnSettings').addEventListener('click', async () => {
   }
 });
 
+/* ── checkpoint codes: see them, print them for the marshals ────────── */
+
+function qrSvg(text, cellSize = 4) {
+  if (typeof window.qrcode !== 'function') return '';
+  try {
+    const q = window.qrcode(0, 'M');
+    q.addData(text);
+    q.make();
+    return q.createSvgTag({ cellSize, margin: 2, scalable: true });
+  } catch {
+    return '';
+  }
+}
+
+$('btnCodes').addEventListener('click', async () => {
+  await pullState();
+  const withCodes = state.points.filter((p) => p.code);
+  if (!withCodes.length) {
+    notify({ title: 'Tiada kod lagi', body: 'Kod dijana bila pusat kawalan bersambung. Cuba sebentar lagi.' });
+    return;
+  }
+  const body = el('div', 'dialog-body');
+  body.append(el('div', null, 'Setiap marshal memaparkan kod checkpoint-nya kepada ketua kumpulan. Cetak satu helai untuk setiap checkpoint sebagai sandaran — jangan letak semua kod pada satu helai di trek.'));
+  const list = el('div', 'codelist');
+  withCodes.forEach((p) => {
+    const row = el('div', 'coderow');
+    row.append(el('span', 'nm', pointName(p)), el('span', 'code', p.code));
+    list.append(row);
+  });
+  body.append(list);
+  const print = await askConfirm({ title: 'Kod checkpoint', body, okLabel: 'Cetak', cancelLabel: 'Tutup' });
+  if (!print) return;
+  const base = new URL('./', location.href).href;
+  const pages = withCodes.map((p) => `
+    <section class="sheet">
+      <div class="brand">JALAN LASAK</div>
+      <h1>${pointName(p).replace(/[<>&]/g, '')}</h1>
+      <div class="qr">${qrSvg(base + '?kod=' + p.code, 8)}</div>
+      <div class="code">${p.code}</div>
+      <p>Ketua kumpulan: taip kod ini dalam app Jalan Lasak, atau imbas QR, untuk membuka checkpoint seterusnya.</p>
+    </section>`).join('');
+  const w = window.open('', '_blank');
+  if (!w) {
+    notify({ title: 'Tetingkap disekat', body: 'Benarkan pop-up untuk mencetak.' });
+    return;
+  }
+  w.document.write(`<!DOCTYPE html><html lang="ms"><head><meta charset="utf-8"><title>Kod checkpoint — Jalan Lasak</title>
+    <style>
+      body { font-family: Archivo, system-ui, sans-serif; margin: 0; color: #201e1d; }
+      .sheet { page-break-after: always; min-height: 96vh; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 24px; box-sizing: border-box; }
+      .brand { font-weight: 800; letter-spacing: .12em; font-size: 18px; }
+      h1 { font-size: 34px; margin: 8px 0 18px; }
+      .qr svg { width: 62vw; max-width: 420px; height: auto; }
+      .code { font-weight: 800; font-size: 64px; letter-spacing: .22em; margin: 18px 0 8px; }
+      p { max-width: 460px; font-size: 16px; }
+    </style></head><body>${pages}</body></html>`);
+  w.document.close();
+  w.focus();
+  setTimeout(() => w.print(), 400);
+});
+
 /* ── manual check-in (radio call) and SMS entry ─────────────────────── */
 
 async function checkInGroup(id) {

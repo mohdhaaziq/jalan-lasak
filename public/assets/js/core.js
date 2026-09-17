@@ -399,7 +399,9 @@ export function boot({ editable = false } = {}) {
       const text = el('span');
       const name = el('span', 'nm', point.name + (point.id === targetId ? ' ◀' : ''));
       const eta = etaLabel(point, scheduleStart);
-      text.append(name, el('br'), el('span', 'co', coordText(point) + (eta ? ' · dijangka ' + eta : '')));
+      // Only the command centre holds codes; there they are worth a glance.
+      const code = editable && point.code ? ' · kod ' + point.code : '';
+      text.append(name, el('br'), el('span', 'co', coordText(point) + (eta ? ' · dijangka ' + eta : '') + code));
       row.append(text);
 
       const dist = el('span', 'dist');
@@ -419,7 +421,7 @@ export function boot({ editable = false } = {}) {
     if (state.progress && state.progress.more) {
       const last = state.points[state.points.length - 1];
       wrap.append(el('div', 'empty hidden-cp', last && !isStart(last)
-        ? 'Checkpoint seterusnya didedahkan bila kumpulan anda tiba di ' + last.name + '.'
+        ? 'Tiba di ' + last.name + '? Masukkan kod yang dipaparkan marshal di situ untuk membuka checkpoint seterusnya — berfungsi tanpa isyarat.'
         : 'Checkpoint pertama didedahkan bila anda masuk dengan PIN kumpulan.'));
     }
 
@@ -659,6 +661,7 @@ export function boot({ editable = false } = {}) {
     state.settings = next.settings && typeof next.settings === 'object' ? next.settings : state.settings;
     state.progress = next.progress && typeof next.progress === 'object' ? next.progress : null;
     if ('area' in next) state.area = next.area && typeof next.area === 'object' ? next.area : null;
+    if ('locked' in next) state.locked = Array.isArray(next.locked) ? next.locked : [];
     if (!findPoint(targetId)) {
       const start = startPoint();
       targetId = start ? start.id : '';

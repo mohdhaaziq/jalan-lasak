@@ -3,10 +3,12 @@
    and is cached on the phone so the map still opens without signal. */
 
 import { boot, $, groupLabel } from './core.js';
-import { getState, loginGroup } from './api.js';
-import { loadGroup, saveGroup, loadGroupPin, saveGroupPin, deviceId, saveState } from './store.js';
+import { getState, loginGroup, postCheckins } from './api.js';
+import { loadGroup, saveGroup, loadGroupPin, saveGroupPin, deviceId, saveState,
+  loadUnlocked, saveUnlocked, loadCodeQueue, saveCodeQueue } from './store.js';
 import { askText, askConfirm, notify, toast } from './ui.js';
 import { createReporter } from './reporter.js';
+import { unlockPoint, normCode, codeFromText, CODE_LEN } from './lock.js';
 
 const STATE_POLL_MS = 5 * 60 * 1000;
 
@@ -15,6 +17,8 @@ const device = deviceId();
 let group = loadGroup();
 let groupPin = loadGroupPin();
 let syncing = false;
+let unlocked = loadUnlocked();     // points opened offline with checkpoint codes
+let codeQueue = loadCodeQueue();   // those unlocks, waiting to be reported as check-ins
 
 const groupName = (id) => {
   const g = core.state.groups.find((x) => x.id === id);
@@ -34,6 +38,7 @@ async function syncState() {
   try {
     // With the group's PIN the server reveals checkpoints as the group reaches them.
     const next = await getState(groupPin ? { groupPin } : {});
+    mergeUnlocked(next);
     const before = core.state.points.map((p) => p.id);
     const after = (next.points || []).map((p) => p.id);
     const versionChanged = next.version !== core.state.version;
@@ -55,6 +60,7 @@ async function syncState() {
       saveState(core.state);
     }
     $('statestat').textContent = 'Peta dikemas kini ' + clock(Date.now());
+    flushCodes();
     return true;
   } catch (err) {
     if (err.status === 401 && groupPin) {
@@ -70,6 +76,162 @@ async function syncState() {
     renderGroup();
   }
 }
+
+/* ── checkpoint codes: opening the next point with no signal ────────── */
+
+/**
+ * Fold what this phone unlocked offline into a server state: points the
+ * server has not (yet) revealed, points it counts as reached, and whether
+ * anything is still locked. The server's view wins once it catches up.
+ */
+function mergeUnlocked(next) {
+  const byId = new Map((next.points || []).map((p) => [p.id, p]));
+  for (const p of Object.values(unlocked.points)) if (!byId.has(p.id)) byId.set(p.id, p);
+  next.points = [...byId.values()].sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
+  const remaining = (next.locked || []).filter((l) => !byId.has(l.id));
+  if (next.progress || unlocked.reached.length) {
+    const reached = new Set([...((next.progress && next.progress.reached) || []), ...unlocked.reached]);
+    next.progress = { reached: [...reached], more: remaining.length > 0 || !!(next.progress && next.progress.more && !next.locked) };
+  }
+  return next;
+}
+
+/** Try `raw` against every locked point; open the one it fits. */
+async function enterCode(raw) {
+  const code = normCode(raw);
+  if (code.length !== CODE_LEN) {
+    await notify({ title: 'Kod tidak lengkap', body: 'Kod checkpoint ialah ' + CODE_LEN + ' aksara, huruf dan nombor.' });
+    return false;
+  }
+  const known = new Set(core.state.points.map((p) => p.id));
+  const locked = (core.state.locked || []).filter((l) => !known.has(l.id)).sort((a, b) => a.seq - b.seq);
+  if (!locked.length) {
+    await notify({
+      title: 'Tiada checkpoint terkunci',
+      body: core.state.locked && core.state.locked.length
+        ? 'Semua checkpoint sudah dibuka.'
+        : 'Peta belum dimuat turun sepenuhnya. Buka app semasa ada isyarat selepas masuk dengan PIN.'
+    });
+    return false;
+  }
+  toast('Membuka kunci…');
+  for (const l of locked) {
+    const point = await unlockPoint(l.blob, code, l.id);
+    if (!point) continue;
+    // The code belongs to the point just before this one: that is where the group stands.
+    const prev = core.state.points.filter((p) => (p.seq ?? 0) < point.seq).pop() || null;
+    unlocked.points[point.id] = point;
+    if (prev && !unlocked.reached.includes(prev.id)) unlocked.reached.push(prev.id);
+    saveUnlocked(unlocked);
+    if (prev) {
+      codeQueue.push({ point: prev.id, code, at: Date.now() });
+      saveCodeQueue(codeQueue);
+    }
+    core.applyState(mergeUnlocked({
+      version: core.state.version, points: core.state.points, routes: core.state.routes, groups: core.state.groups,
+      settings: core.state.settings, area: core.state.area, locked: core.state.locked, progress: core.state.progress
+    }));
+    core.setTarget(point.id);
+    toast('Checkpoint seterusnya dibuka: ' + point.name, 5000);
+    flushCodes();
+    return true;
+  }
+  await notify({ title: 'Kod salah', body: 'Semak kod dengan marshal di checkpoint. Huruf besar kecil tidak penting.' });
+  return false;
+}
+
+/** Deliver queued code check-ins; a marshal's record is not needed for these. */
+let flushingCodes = false;
+async function flushCodes() {
+  if (flushingCodes || !codeQueue.length || !groupPin || !navigator.onLine) return;
+  flushingCodes = true;
+  try {
+    await postCheckins({ groupPin, device, items: codeQueue });
+    codeQueue = [];
+    saveCodeQueue(codeQueue);
+  } catch (err) {
+    if (err.status === 400 || err.status === 404) {
+      // The server will never take these (point gone, code rotated); stop retrying.
+      codeQueue = [];
+      saveCodeQueue(codeQueue);
+    }
+  } finally {
+    flushingCodes = false;
+  }
+}
+
+$('btnCode').addEventListener('click', async () => {
+  if (!groupPin) {
+    await notify({ title: 'Masuk dahulu', body: 'Masuk dengan PIN kumpulan sebelum memasukkan kod checkpoint.' });
+    return;
+  }
+  const raw = await askText({
+    title: 'Kod checkpoint',
+    body: 'Taip kod yang dipaparkan marshal di checkpoint ini. Checkpoint seterusnya akan dibuka serta-merta, walaupun tanpa isyarat.',
+    placeholder: 'cth. K7PX2M',
+    label: 'Kod checkpoint',
+    okLabel: 'Buka'
+  });
+  if (raw) enterCode(raw);
+});
+
+/* — QR scan, where the browser can read barcodes (Android Chrome) — */
+const scanUI = $('scan');
+let scanStream = null;
+let scanTimer = null;
+
+function stopScan() {
+  clearTimeout(scanTimer);
+  scanTimer = null;
+  if (scanStream) scanStream.getTracks().forEach((t) => t.stop());
+  scanStream = null;
+  $('scanvideo').srcObject = null;
+  scanUI.hidden = true;
+}
+
+async function startScan() {
+  if (!groupPin) {
+    await notify({ title: 'Masuk dahulu', body: 'Masuk dengan PIN kumpulan sebelum mengimbas kod.' });
+    return;
+  }
+  let detector;
+  try {
+    detector = new window.BarcodeDetector({ formats: ['qr_code'] });
+    scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+  } catch {
+    notify({ title: 'Kamera tidak tersedia', body: 'Taip kod checkpoint sebagai ganti.' });
+    return;
+  }
+  const video = $('scanvideo');
+  video.srcObject = scanStream;
+  scanUI.hidden = false;
+  const tick = async () => {
+    if (!scanStream) return;
+    try {
+      const found = await detector.detect(video);
+      for (const b of found) {
+        const code = codeFromText(b.rawValue);
+        if (code) {
+          stopScan();
+          enterCode(code);
+          return;
+        }
+      }
+    } catch { /* frame not ready */ }
+    scanTimer = setTimeout(tick, 250);
+  };
+  tick();
+}
+
+if ('BarcodeDetector' in window && navigator.mediaDevices) {
+  $('btnScan').hidden = false;
+  $('btnScan').addEventListener('click', startScan);
+}
+$('btnScanClose').addEventListener('click', stopScan);
+
+window.addEventListener('online', flushCodes);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') flushCodes(); });
+setInterval(flushCodes, 60 * 1000);
 
 /* ── group identity ─────────────────────────────────────────────────── */
 
@@ -127,9 +289,13 @@ function logoutGroup() {
   groupPin = '';
   saveGroup('');
   saveGroupPin('');
+  unlocked = { points: {}, reached: [] };
+  saveUnlocked(unlocked);
+  codeQueue = [];
+  saveCodeQueue(codeQueue);
   // Without a PIN the phone may only see MULA; drop the checkpoints it held.
   const start = core.state.points.find((p) => p.type === 'start');
-  core.applyState({ version: core.state.version, points: start ? [start] : [], progress: null });
+  core.applyState({ version: core.state.version, points: start ? [start] : [], progress: null, locked: [] });
   renderGroup();
 }
 
@@ -328,10 +494,14 @@ syncWake();
 /* ── init ───────────────────────────────────────────────────────────── */
 
 renderGroup();
-syncState().then(() => {
+// A checkpoint QR carries our own URL with ?kod=…; the camera app lands here.
+const kodFromUrl = new URLSearchParams(location.search).get('kod');
+if (kodFromUrl) history.replaceState(null, '', location.pathname);
+syncState().then(async () => {
   const known = group && groupPin && core.state.groups.some((g) => g.id === group);
   if (known) reporter.start();
-  else chooseGroup();
+  else await chooseGroup();
+  if (kodFromUrl && groupPin) enterCode(kodFromUrl);
 });
 setInterval(syncState, STATE_POLL_MS);
 window.addEventListener('online', syncState);

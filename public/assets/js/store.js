@@ -15,6 +15,8 @@ const KEY_CCKEY = 'jl_cckey_v1';     // command-centre key, on that device only
 const KEY_MARSHAL_PIN = 'jl_mpin_v1';    // marshal PIN, on the marshal's phone
 const KEY_MARSHAL_POINT = 'jl_mpoint_v1'; // which checkpoint this marshal phone stands at
 const KEY_CHECKIN_QUEUE = 'jl_ciq_v1';   // check-ins not yet delivered
+const KEY_UNLOCKED = 'jl_unlocked_v1';   // points this phone opened with a checkpoint code, offline
+const KEY_CODE_QUEUE = 'jl_codeq_v1';    // those unlocks, as check-ins not yet delivered
 
 export const DEFAULT_POINTS = [
   { id: 'start', type: 'start', name: 'MULA — Parking Stesen KTM Kuala Kubu Bharu', lat: 3.556879, lng: 101.632263 },
@@ -103,16 +105,36 @@ export function loadState() {
       groups: Array.isArray(cached.groups) ? cached.groups : [],
       settings: cached.settings && typeof cached.settings === 'object' ? cached.settings : {},
       progress: cached.progress && typeof cached.progress === 'object' ? cached.progress : null,
-      area: cached.area && typeof cached.area === 'object' ? cached.area : null
+      area: cached.area && typeof cached.area === 'object' ? cached.area : null,
+      locked: Array.isArray(cached.locked) ? cached.locked : []
     };
   }
-  return { version: 0, points: loadPoints(), routes: loadRoutes(), groups: [], settings: {}, progress: null, area: null };
+  return { version: 0, points: loadPoints(), routes: loadRoutes(), groups: [], settings: {}, progress: null, area: null, locked: [] };
 }
 
 export const saveState = (state) => write(KEY_STATE, {
   version: state.version, points: state.points, routes: state.routes, groups: state.groups,
-  settings: state.settings, progress: state.progress || null, area: state.area || null
+  settings: state.settings, progress: state.progress || null, area: state.area || null, locked: state.locked || []
 });
+
+/* ── checkpoint codes (participant) ───────────────────────────────────── */
+
+/** { points: { id → point }, reached: [pointId] } opened on this phone with codes. */
+export function loadUnlocked() {
+  const u = read(KEY_UNLOCKED, null);
+  return u && typeof u === 'object' && u.points && typeof u.points === 'object'
+    ? { points: u.points, reached: Array.isArray(u.reached) ? u.reached : [] }
+    : { points: {}, reached: [] };
+}
+
+export const saveUnlocked = (u) => write(KEY_UNLOCKED, u);
+
+export function loadCodeQueue() {
+  const q = read(KEY_CODE_QUEUE, []);
+  return Array.isArray(q) ? q : [];
+}
+
+export const saveCodeQueue = (queue) => write(KEY_CODE_QUEUE, queue);
 
 /* ── participant identity ─────────────────────────────────────────────── */
 

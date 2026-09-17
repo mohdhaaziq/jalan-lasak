@@ -308,10 +308,31 @@ setInterval(() => syncState().then(render), 5 * 60 * 1000);
 
 /* ── render ─────────────────────────────────────────────────────────── */
 
+/** This checkpoint's code, big, and as a QR of the participant URL. */
+function renderCode(p) {
+  const box = $('mcode');
+  if (!p || !p.code) {
+    box.hidden = true;
+    return;
+  }
+  box.hidden = false;
+  $('mcodetext').textContent = p.code;
+  const qr = $('mqr');
+  qr.textContent = '';
+  if (typeof window.qrcode !== 'function') return;
+  try {
+    const q = window.qrcode(0, 'M');
+    q.addData(new URL('./?kod=' + p.code, location.href).href);
+    q.make();
+    qr.innerHTML = q.createSvgTag({ cellSize: 5, margin: 2, scalable: true });
+  } catch { /* leave the code as text */ }
+}
+
 function render() {
   const p = pointById(point);
   $('pointname').textContent = p ? pointName(p) : 'Belum dipilih';
   $('btnPoint').textContent = p ? 'Tukar' : 'Pilih checkpoint';
+  renderCode(p);
 
   const bits = [];
   bits.push(lastDelivered ? 'Dihantar ' + clock(lastDelivered) : 'Belum ada dihantar');

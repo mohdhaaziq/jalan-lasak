@@ -10,6 +10,8 @@ INSERT OR IGNORE INTO meta (key, value) VALUES ('version', '1');
 
 -- Program points: the start and every checkpoint, in display order.
 -- eta_min is the schedule: minutes after a group's start it is expected here.
+-- code is the point's secret 6-character checkpoint code, shown by the
+-- marshal there; it unlocks the next point on a participant phone offline.
 CREATE TABLE IF NOT EXISTS points (
   id      TEXT PRIMARY KEY,
   type    TEXT NOT NULL CHECK (type IN ('start', 'cp')),
@@ -17,8 +19,10 @@ CREATE TABLE IF NOT EXISTS points (
   lat     REAL NOT NULL,
   lng     REAL NOT NULL,
   seq     INTEGER NOT NULL,
-  eta_min INTEGER
+  eta_min INTEGER,
+  code    TEXT
 );
+CREATE UNIQUE INDEX IF NOT EXISTS points_code ON points (code);
 
 -- Suggested routes drawn by the command centre. latlngs is a JSON [[lat,lng],…].
 CREATE TABLE IF NOT EXISTS routes (
@@ -62,7 +66,7 @@ CREATE TABLE IF NOT EXISTS checkins (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   group_id    TEXT NOT NULL,
   point_id    TEXT NOT NULL,
-  source      TEXT NOT NULL,      -- 'marshal' | 'cc'
+  source      TEXT NOT NULL,      -- 'marshal' | 'cc' | 'qr' (the group's own phone, with the point's code)
   device      TEXT,
   note        TEXT,
   recorded_at INTEGER NOT NULL,

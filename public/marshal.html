@@ -15,6 +15,7 @@
 <link rel="stylesheet" href="assets/css/modernist.css">
 <link rel="stylesheet" href="assets/css/app.css">
 <script src="vendor/leaflet/leaflet.js" defer></script>
+<script src="vendor/qrcode/qrcode.js" defer></script>
 <script src="assets/js/marshal.js" type="module"></script>
 </head>
 <body class="page">
@@ -46,6 +47,16 @@
       <button type="button" class="jl-btn" id="btnPoint">Pilih checkpoint</button>
     </div>
     <div class="stat pad" id="mstat"></div>
+    <div id="mcode" hidden>
+      <div class="sect-head">Kod checkpoint ini</div>
+      <div class="codebox">
+        <div id="mqr" aria-hidden="true"></div>
+        <div>
+          <div class="big" id="mcodetext">—</div>
+          <div class="desc">Ketua kumpulan taip kod ini, atau imbas QR, untuk membuka checkpoint seterusnya di telefonnya — berfungsi tanpa isyarat. Tetap tekan <b>Tiba</b> di bawah.</div>
+        </div>
+      </div>
+    </div>
     <div class="sect-head">Kumpulan tiba</div>
     <div id="mlist"></div>
     <div class="foot"><a href="./">Paparan peserta →</a></div>

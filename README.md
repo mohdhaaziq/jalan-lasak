@@ -60,7 +60,21 @@ kumpulannya, dan **satu** checkpoint seterusnya — pelayan menapis mengikut
 PIN kumpulan, bukan sekadar menyembunyikan di skrin. "Sampai" dikira dari
 daftar masuk marshal atau pusat kawalan, atau mana-mana kedudukan kumpulan
 itu dalam 100 m dari titik. Bila checkpoint baharu didedahkan, kompas terus
-disasarkan kepadanya. Laluan cadangan **tidak** ditapis — jika laluan
+disasarkan kepadanya.
+
+**Kod checkpoint — pendedahan tanpa isyarat.** Setiap titik ada kod rahsia
+6 aksara (tanpa 0/O/1/I). Semasa ada talian, telefon peserta turut memuat
+turun setiap checkpoint yang belum didedahkan dalam bentuk **disulitkan**
+(AES-GCM, kunci PBKDF2 daripada kod checkpoint *sebelumnya*). Di checkpoint,
+marshal memaparkan kod titiknya (teks besar + QR di `/marshal.html`; pusat
+kawalan boleh **cetak** satu helai setiap checkpoint melalui *Kod
+checkpoint*). Ketua kumpulan taip kod itu, imbas QR dalam app (Android
+Chrome), atau imbas dengan kamera telefon (QR membawa URL `/?kod=…`) —
+checkpoint seterusnya dibuka **serta-merta tanpa talian**, dan catatan
+"tiba" beratur dalam telefon lalu dihantar (`source: 'qr'`) bila ada
+isyarat. Kod juga boleh dibaca melalui walkie-talkie atau dibalas oleh pusat
+kawalan melalui SMS. Jangan letak semua kod pada satu helai di trek.
+Pangkalan data lama: jalankan `migrations/0002-point-code.sql` sekali. Laluan cadangan **tidak** ditapis — jika laluan
 mendedahkan lokasi checkpoint, lukis laluan hanya setakat checkpoint
 seterusnya, atau jangan lukis.
 
@@ -214,7 +228,7 @@ design/                 bundle serahan Claude Design (rujukan)
 | PUT | `/api/settings` | kunci | nombor SMS, PIN marshal |
 | POST | `/api/positions` | telefon (PIN kumpulan) atau kunci | hantar sekumpulan kedudukan (`source: 'sms'` untuk yang ditaip); pulang `revealed` = bilangan titik yang kumpulan itu boleh lihat |
 | GET | `/api/positions?trail=N` | kunci **atau** PIN | kedudukan terkini, daftar masuk dan masa mula setiap kumpulan + N jejak; PIN kumpulan hanya untuk kunci |
-| POST | `/api/checkins` | kunci **atau** PIN | catat kumpulan tiba di titik; tiba di MULA memulakan jam kumpulan |
+| POST | `/api/checkins` | kunci, PIN marshal, **atau** PIN kumpulan + kod titik | catat kumpulan tiba di titik; tiba di MULA memulakan jam kumpulan |
 
 Kunci dihantar sebagai `Authorization: Bearer <CC_KEY>`; PIN marshal sebagai
 `X-Marshal-Pin`; PIN kumpulan dalam badan `POST /api/positions` sebagai `pin`.
@@ -226,7 +240,7 @@ Melayu dan dipaparkan terus dalam app.
 
 | Cache | Isi | Dibuang bila |
 | --- | --- | --- |
-| `jl-shell-v11` | fail app + salinan terakhir `/api/state` | versi baharu digunakan |
+| `jl-shell-v12` | fail app + salinan terakhir `/api/state` | versi baharu digunakan |
 | `jl-tiles-v1` | tile yang **sengaja** disimpan | hanya melalui butang *Kosongkan* |
 | `jl-tiles-auto-v1` | tile yang terpapar semasa melayari | automatik, melebihi 1500 tile |
 
@@ -246,6 +260,7 @@ ada dalam `design/`.
 
 - [Leaflet](https://leafletjs.com) 1.9.4 — BSD-2-Clause (`public/vendor/leaflet/LICENSE`)
 - [Archivo](https://fonts.google.com/specimen/Archivo) — SIL OFL 1.1 (`public/vendor/fonts/LICENSE`)
+- [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator) 1.4.4 — MIT (`public/vendor/qrcode/LICENSE`)
 - Tile: © OpenStreetMap contributors · © OpenTopoMap (CC-BY-SA) · Imagery © Esri,
   Maxar, Earthstar Geographics. Patuhi
   [dasar penggunaan tile OSM](https://operations.osmfoundation.org/policies/tiles/)

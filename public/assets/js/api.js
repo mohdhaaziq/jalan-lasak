@@ -83,10 +83,11 @@ export const putSettings = (key, settings) =>
  * marshal PIN. items: [{ group, point, at?, note? }]. Resolves to
  * { version, saved, started } where started maps group → clock start it set.
  */
-export async function postCheckins({ key, pin, device, items, verify = false }) {
+export async function postCheckins({ key, pin, groupPin, device, items, verify = false }) {
   const headers = { 'Content-Type': 'application/json' };
   if (key) headers.Authorization = 'Bearer ' + key;
   else if (pin) headers['X-Marshal-Pin'] = pin;
+  else if (groupPin) headers['X-Group-Pin'] = groupPin;   // items: [{ point, code, at }] for this group
   let response;
   try {
     response = await fetch(BASE + 'checkins', {

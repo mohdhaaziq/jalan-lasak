@@ -18,8 +18,18 @@
    centre, or any of the group's own fixes within REACHED_M of the point.
    The command centre and marshals see everything; anyone else, MULA only.
 
+   Every point also has a secret 6-character code, shown (as text and a QR)
+   on the marshal phone standing there and printable from the command
+   centre. A participant phone downloads every not-yet-revealed point as a
+   `locked` blob, encrypted with the code of the point before it, so at a
+   checkpoint with no signal the leader types or scans that checkpoint's
+   code and the next one opens on the phone at once. The unlock is also
+   queued as a check-in (source 'qr') and reaches the server when signal
+   returns.
+
    Routes
-     GET  /api/state              { version, points, routes, groups, settings, area, progress? }
+     GET  /api/state              { version, points, routes, groups, settings, area, progress?, locked? }
+                                  points carry `code` for CC / marshal only
                                   CC key / marshal PIN: all points · X-Group-Pin: revealed points · else MULA only
      PUT  /api/state              { points, routes }  → { version }               CC
      PUT  /api/groups             { groups }  → { version, groups:[{id,pin}] }    CC
@@ -28,6 +38,7 @@
      POST /api/positions          { group, pin, device, items[] } → { version, saved, revealed }   group PIN or CC
      GET  /api/positions[?trail=N]  latest fix, check-ins and start per group     CC or marshal PIN (PINs only for CC)
      POST /api/checkins           { device, items:[{group, point, at?, note?}] }  CC or marshal PIN
+                                  { device, items:[{point, code, at?}] }         X-Group-Pin (source 'qr')
 */
 
 const DEFAULT_POINTS = [
@@ -108,6 +119,49 @@ const cleanText = (v, max, fallback = '') => {
   return s || fallback;
 };
 const cleanName = (v, fallback) => cleanText(v, MAX_NAME, fallback);
+
+const CODE_LEN = 6;
+const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';   // no 0/O/1/I — read aloud over radio, typed in rain
+const isCode = (v) => typeof v === 'string' && v.length === CODE_LEN && [...v].every((c) => CODE_ALPHABET.includes(c));
+const normCode = (v) => (typeof v === 'string' ? v.toUpperCase().replace(/[^A-Z2-9]/g, '').slice(0, CODE_LEN) : '');
+
+/** A random checkpoint code not in `taken`. */
+function newCode(taken) {
+  const buf = new Uint8Array(CODE_LEN);
+  for (;;) {
+    crypto.getRandomValues(buf);
+    const code = [...buf].map((b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join('');
+    if (!taken.has(code)) {
+      taken.add(code);
+      return code;
+    }
+  }
+}
+
+/* ── locking a point behind the previous point's code ─────────────────── */
+
+const KDF_ITERATIONS = 30000;   // the phone must derive the same key; keep it quick on a mid-range Android
+const textBytes = (s) => new TextEncoder().encode(s);
+const b64 = (bytes) => btoa(String.fromCharCode(...bytes));
+
+async function keyFromCode(code, pointId) {
+  const base = await crypto.subtle.importKey('raw', textBytes(code), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt: textBytes('jalan-lasak:' + pointId), iterations: KDF_ITERATIONS, hash: 'SHA-256' },
+    base, { name: 'AES-GCM', length: 256 }, false, ['encrypt']);
+}
+
+/** AES-GCM(point) under the code, as base64(iv ‖ ciphertext). */
+async function lockPoint(point, code) {
+  const key = await keyFromCode(code, point.id);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const data = textBytes(JSON.stringify({ id: point.id, type: point.type, name: point.name, lat: point.lat, lng: point.lng, etaMin: point.etaMin, seq: point.seq }));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, data));
+  const out = new Uint8Array(iv.length + ct.length);
+  out.set(iv);
+  out.set(ct, iv.length);
+  return b64(out);
+}
 
 const PIN_DIGITS = 6;
 const isPin = (v) => typeof v === 'string' && new RegExp(`^\\d{${PIN_DIGITS}}$`).test(v);
@@ -245,25 +299,40 @@ async function getState(request, env) {
   const db = env.DB;
   await seedIfEmpty(db);
   const who = await stateRole(request, env);
+  if (who.role !== 'public') await ensureCodes(db);
   const [version, pointRows, routes, groups, settings] = await Promise.all([
     getVersion(db),
-    db.prepare('SELECT id, type, name, lat, lng, eta_min FROM points ORDER BY seq').all(),
+    db.prepare('SELECT id, type, name, lat, lng, eta_min, code FROM points ORDER BY seq').all(),
     db.prepare('SELECT id, name, latlngs FROM routes ORDER BY seq').all(),
     db.prepare('SELECT id, name, started_at FROM groups ORDER BY seq').all(),
     getSettings(db)
   ]);
-  let points = pointRows.results.map((p) => ({ ...p, etaMin: p.eta_min, eta_min: undefined }));
+  const all = pointRows.results.map((p, i) => ({
+    id: p.id, type: p.type, name: p.name, lat: p.lat, lng: p.lng, etaMin: p.eta_min, seq: i, code: p.code
+  }));
   const routeList = routes.results.map((r) => ({ ...r, latlngs: JSON.parse(r.latlngs) }));
-  const area = programArea(points, routeList);
+  const area = programArea(all, routeList);
+  // Only the command centre and marshals ever see codes; a participant's
+  // phone gets the hidden points locked behind them instead.
+  const strip = (p) => ({ ...p, code: undefined });
+  let points;
   let progress;
+  let locked;
   if (who.role === 'group') {
-    const pr = await progressFor(db, who.group, points);
-    points = pr.revealed;
+    const pr = await progressFor(db, who.group, all);
+    points = pr.revealed.map(strip);
     progress = { reached: pr.reached, more: pr.more };
+    locked = [];
+    for (let i = pr.revealed.length; i < all.length; i++) {
+      const prev = all[i - 1];
+      if (!prev || !isCode(prev.code)) continue;
+      locked.push({ id: all[i].id, seq: all[i].seq, blob: await lockPoint(all[i], prev.code) });
+    }
   } else if (who.role === 'public') {
-    const start = points.filter((p) => p.type === 'start');
-    progress = { reached: [], more: points.length > start.length };
-    points = start;
+    points = all.filter((p) => p.type === 'start').map(strip);
+    progress = { reached: [], more: all.length > points.length };
+  } else {
+    points = all;
   }
   return json({
     version,
@@ -272,7 +341,8 @@ async function getState(request, env) {
     groups: groups.results.map((g) => ({ id: g.id, name: g.name, startedAt: g.started_at })),
     settings,
     area,
-    ...(progress ? { progress } : {})
+    ...(progress ? { progress } : {}),
+    ...(locked ? { locked } : {})
   });
 }
 
@@ -291,6 +361,10 @@ async function putState(request, env) {
   if (!points.some((p) => p && p.type === 'start')) throw new HttpError(400, 'Titik MULA mesti ada.');
 
   const db = env.DB;
+  // Codes survive an edit; a new point gets a fresh one.
+  const existing = await db.prepare('SELECT id, code FROM points').all();
+  const codeBefore = new Map(existing.results.map((p) => [p.id, p.code]));
+  const takenCodes = new Set();
   const stmts = [db.prepare('DELETE FROM points'), db.prepare('DELETE FROM routes')];
   const seen = new Set();
 
@@ -298,9 +372,11 @@ async function putState(request, env) {
     if (!p || !isId(p.id) || !isLat(p.lat) || !isLng(p.lng)) throw new HttpError(400, `Titik #${i + 1} tidak sah.`);
     if (seen.has(p.id)) throw new HttpError(400, `ID titik berulang: ${p.id}`);
     seen.add(p.id);
-    stmts.push(db.prepare('INSERT INTO points (id, type, name, lat, lng, seq, eta_min) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    const kept = codeBefore.get(p.id);
+    const code = isCode(kept) && !takenCodes.has(kept) ? (takenCodes.add(kept), kept) : newCode(takenCodes);
+    stmts.push(db.prepare('INSERT INTO points (id, type, name, lat, lng, seq, eta_min, code) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
       .bind(p.id, p.type === 'start' ? 'start' : 'cp', cleanName(p.name, 'Checkpoint'), p.lat, p.lng, i,
-        etaValue(p.etaMin, `Titik #${i + 1}`)));
+        etaValue(p.etaMin, `Titik #${i + 1}`), code));
   });
 
   routes.forEach((r, i) => {
@@ -368,6 +444,16 @@ async function ensurePins(db) {
   const taken = new Set(rows.results.map((g) => g.pin).filter(isPin));
   await db.batch(missing.map((g) =>
     db.prepare('UPDATE groups SET pin = ? WHERE id = ?').bind(newPin(taken), g.id)));
+}
+
+/** Points created before codes existed get one the first time anyone needs them. */
+async function ensureCodes(db) {
+  const rows = await db.prepare('SELECT id, code FROM points').all();
+  const missing = rows.results.filter((p) => !isCode(p.code));
+  if (!missing.length) return;
+  const taken = new Set(rows.results.map((p) => p.code).filter(isCode));
+  await db.batch(missing.map((p) =>
+    db.prepare('UPDATE points SET code = ? WHERE id = ?').bind(newCode(taken), p.id)));
 }
 
 /** A participant phone logs in with its group's PIN alone. */
@@ -498,7 +584,19 @@ async function getPositions(request, env, url) {
 /* ── check-ins ────────────────────────────────────────────────────────── */
 
 async function postCheckins(request, env) {
-  const who = await requireCCOrMarshal(request, env);
+  // A participant phone may also check in — for its own group only, and only
+  // with the checkpoint's code as proof it stood there.
+  const gpin = (request.headers.get('X-Group-Pin') || '').trim();
+  let who;
+  let ownGroup = null;
+  if (gpin && !isCC(request, env)) {
+    const g = isPin(gpin) ? await env.DB.prepare('SELECT id FROM groups WHERE pin = ?').bind(gpin).first() : null;
+    if (!g) throw new HttpError(401, 'PIN kumpulan salah — masuk semula.');
+    who = 'qr';
+    ownGroup = g.id;
+  } else {
+    who = await requireCCOrMarshal(request, env);
+  }
   const body = await readJson(request);
   if (body.verify) return json({ ok: true, role: who });   // a marshal phone checking its PIN
   const items = Array.isArray(body.items) ? body.items.slice(-MAX_BATCH) : [];
@@ -508,18 +606,24 @@ async function postCheckins(request, env) {
   const db = env.DB;
   const [groups, points] = await Promise.all([
     db.prepare('SELECT id, started_at FROM groups').all(),
-    db.prepare('SELECT id, type FROM points').all()
+    db.prepare('SELECT id, type, code FROM points').all()
   ]);
   const groupStart = new Map(groups.results.map((g) => [g.id, g.started_at]));
   const pointType = new Map(points.results.map((p) => [p.id, p.type]));
+  const pointCode = new Map(points.results.map((p) => [p.id, p.code]));
 
   const now = Date.now();
   const stmts = [];
   const started = {};
   for (const it of items) {
-    if (!it || !isId(it.group) || !isId(it.point)) continue;
+    if (!it || !isId(it.point)) continue;
+    if (ownGroup) it.group = ownGroup;
+    if (!isId(it.group)) continue;
     if (!groupStart.has(it.group)) throw new HttpError(404, 'Kumpulan tidak wujud lagi.');
     if (!pointType.has(it.point)) throw new HttpError(404, 'Titik tidak wujud lagi.');
+    if (who === 'qr' && !(isCode(pointCode.get(it.point)) && sameKey(normCode(it.code), pointCode.get(it.point)))) {
+      throw new HttpError(400, 'Kod checkpoint salah.');
+    }
     const at = clientTime(it.at, now);
     stmts.push(db.prepare(
       'INSERT INTO checkins (group_id, point_id, source, device, note, recorded_at, received_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
