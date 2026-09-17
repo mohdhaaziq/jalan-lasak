@@ -16,10 +16,10 @@
 }
 
 html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
-/* The canvas colour: whatever band a phone's layout misses (iOS standalone can
-   leave the home-indicator strip unpainted until the first resize) shows the
-   panel colour, never white. */
-html { background: var(--color-neutral-100); }
+/* The canvas is ink: whatever band a phone's layout misses (iOS standalone
+   leaves the home-indicator strip to the system) meets the ink tab bar and
+   reads as one dark base, never as a white gap. */
+html { background: var(--jl-ink); }
 body {
   font-family: var(--font-body);
   background: var(--color-bg);
@@ -30,9 +30,10 @@ a { color: var(--color-accent-700); }
 a:hover { color: var(--color-accent); }
 
 #app { position: fixed; inset: 0; display: flex; flex-direction: column; }
-/* iOS standalone: inset:0 alone can stop short of the home-indicator band; the
-   dynamic viewport height reaches the real bottom of the screen. */
+/* iOS standalone: inset:0 alone can stop short of the home-indicator band.
+   tabs.js keeps --app-h at the live window height; dvh is the fallback. */
 @supports (height: 100dvh) { #app { height: 100dvh; } }
+#app { height: var(--app-h, 100dvh); }
 
 /* ── top bar ─────────────────────────────────────────────────────────── */
 #topbar {
@@ -152,29 +153,30 @@ a:hover { color: var(--color-accent); }
 #report .who .n { font-family: var(--font-heading); font-weight: 800; font-size: 17px; }
 #pane-checkpoint .sect-head:first-child, #pane-peta .sect-head:first-child { border-top: 0; }
 
+/* Ink, like the top bar: the app is framed dark top and bottom, and the bar
+   owns the home-indicator band (its own padding, its own colour), so on an
+   iPhone the strip below the tabs is part of the bar, not a gap. */
 #tabbar {
   flex: none; display: flex;
-  border-top: 2px solid var(--jl-ink);
-  background: var(--color-neutral-100);
-  /* The bar owns the home-indicator band, like a native tab bar: the tabs sit
-     above it and the bar's own colour fills it, so nothing reads as empty. */
+  background: var(--jl-ink);
   padding-bottom: env(safe-area-inset-bottom);
 }
 #tabbar [role="tab"] {
-  flex: 1; min-height: 56px; padding: 8px 4px 6px;
+  flex: 1; min-height: 56px; padding: 6px 4px 8px;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
-  background: transparent; color: var(--jl-ink);
-  border: 0; border-left: 2px solid var(--jl-ink); border-radius: var(--radius-md);
+  background: transparent; color: var(--jl-muted-on-ink);
+  border: 0; border-top: 3px solid transparent;
+  border-left: 1px solid color-mix(in srgb, var(--color-bg) 14%, transparent);
+  border-radius: var(--radius-md);
   font-family: var(--font-heading); font-size: 10px; font-weight: 700;
   letter-spacing: .06em; text-transform: uppercase; cursor: pointer; user-select: none;
 }
 #tabbar [role="tab"]:first-child { border-left: 0; }
 #tabbar [role="tab"] svg { width: 22px; height: 22px; }
-#tabbar [role="tab"] .n { font-weight: 400; color: var(--jl-muted); letter-spacing: 0; margin-left: 2px; }
+#tabbar [role="tab"] .n { font-weight: 400; letter-spacing: 0; margin-left: 2px; opacity: .8; }
 #tabbar [role="tab"] .n:empty { display: none; }
-#tabbar [role="tab"]:hover { background: var(--color-neutral-200); }
-#tabbar [role="tab"][aria-selected="true"] { background: var(--jl-ink); color: var(--jl-on-ink); }
-#tabbar [role="tab"][aria-selected="true"] .n { color: var(--jl-muted-on-ink); }
+#tabbar [role="tab"]:hover { color: var(--jl-on-ink); }
+#tabbar [role="tab"][aria-selected="true"] { background: var(--color-neutral-900); color: var(--jl-on-ink); border-top-color: var(--color-accent); }
 #tabbar [role="tab"]:focus-visible { outline: 3px solid var(--color-accent); outline-offset: -3px; }
 
 /* ── compass strip ───────────────────────────────────────────────────── */

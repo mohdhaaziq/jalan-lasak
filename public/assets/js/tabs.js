@@ -4,7 +4,22 @@
 
 import { $ } from './core.js';
 
+/**
+ * Keep --app-h at the window's real height. iOS standalone can report a
+ * stale viewport at launch and only correct it on a later resize; following
+ * the resize keeps the tab bar on the screen's bottom edge.
+ */
+function fitViewport() {
+  document.documentElement.style.setProperty('--app-h', window.innerHeight + 'px');
+}
+
 export function mountTabs({ map, storageKey, defaultPane }) {
+  fitViewport();
+  window.addEventListener('resize', fitViewport);
+  window.addEventListener('orientationchange', () => setTimeout(fitViewport, 300));
+  window.addEventListener('pageshow', fitViewport);
+  setTimeout(fitViewport, 500);
+
   const tabs = [...document.querySelectorAll('#tabbar [role="tab"]')];
   const sheet = $('sheet');
   if (!tabs.length || !sheet) return null;

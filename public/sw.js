@@ -10,7 +10,7 @@
    - TILES_AUTO  tiles that happened to be drawn while browsing. Cache-first
                 and trimmed, so casual panning cannot fill the device. */
 
-const VERSION = 'v17';
+const VERSION = 'v18';
 const SHELL = `jl-shell-${VERSION}`;
 const TILES_SAVED = 'jl-tiles-v1';
 const TILES_AUTO = 'jl-tiles-auto-v1';
