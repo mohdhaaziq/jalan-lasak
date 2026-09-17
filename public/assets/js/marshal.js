@@ -390,8 +390,19 @@ window.addEventListener('offline', netUI);
 netUI();
 
 if ('serviceWorker' in navigator) {
+  const hadController = !!navigator.serviceWorker.controller;
+  let reloading = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController || reloading) return;
+    reloading = true;
+    toast('Versi baharu dipasang — memuat semula…', 2000);
+    setTimeout(() => window.location.reload(), 600);
+  });
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').then((r) => r.update()).catch(() => {});
+    navigator.serviceWorker.register('sw.js').then((r) => {
+      r.update();
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') r.update().catch(() => {}); });
+    }).catch(() => {});
   });
 }
 

@@ -635,18 +635,26 @@ export function boot({ editable = false } = {}) {
   /* ── service worker ─────────────────────────────────────────────────── */
 
   if ('serviceWorker' in navigator) {
+    // A home-screen app has no reload button: when a new version takes over,
+    // reload once so the phone runs it. Everything that matters is in
+    // localStorage, so nothing is lost. (Not on the very first install, when
+    // there was no previous version and a dialog may be open.)
+    const hadController = !!navigator.serviceWorker.controller;
+    let reloading = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!hadController || reloading) return;
+      reloading = true;
+      toast('Versi baharu dipasang — memuat semula…', 2000);
+      setTimeout(() => window.location.reload(), 600);
+    });
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('sw.js').then((registration) => {
         registration.update();
-        registration.addEventListener('updatefound', () => {
-          const installing = registration.installing;
-          if (!installing) return;
-          installing.addEventListener('statechange', () => {
-            if (installing.state === 'installed' && navigator.serviceWorker.controller) {
-              toast('Versi baharu tersedia — muat semula untuk kemas kini.', 6000);
-            }
-          });
+        // Look again whenever the app comes back to the front, and hourly.
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') registration.update().catch(() => {});
         });
+        setInterval(() => registration.update().catch(() => {}), 60 * 60 * 1000);
       }).catch(() => { /* offline storage simply stays unavailable */ });
     });
   }

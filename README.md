@@ -264,12 +264,15 @@ Melayu dan dipaparkan terus dalam app.
 
 | Cache | Isi | Dibuang bila |
 | --- | --- | --- |
-| `jl-shell-v18` | fail app + salinan terakhir `/api/state` | versi baharu digunakan |
+| `jl-shell-v19` | fail app + salinan terakhir `/api/state` | versi baharu digunakan |
 | `jl-tiles-v1` | tile yang **sengaja** disimpan | hanya melalui butang *Kosongkan* |
 | `jl-tiles-auto-v1` | tile yang terpapar semasa melayari | automatik, melebihi 1500 tile |
 
 Fail app dilayan **network-first**, jadi perubahan yang di-deploy muncul pada
-lawatan berikutnya; cache hanya jadi sandaran bila tiada talian.
+lawatan berikutnya; cache hanya jadi sandaran bila tiada talian. Bila service
+worker baharu mengambil alih, halaman **memuat semula sendiri** sekali (app
+skrin utama tiada butang muat semula); kemas kini disemak setiap kali app
+kembali ke depan.
 
 ## Reka bentuk
 
