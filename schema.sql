@@ -25,11 +25,15 @@ CREATE TABLE IF NOT EXISTS points (
 CREATE UNIQUE INDEX IF NOT EXISTS points_code ON points (code);
 
 -- Suggested routes drawn by the command centre. latlngs is a JSON [[lat,lng],…].
+-- A route runs from one point (MULA or a checkpoint) to a checkpoint; a
+-- participant phone only receives it once the checkpoint it ends at is revealed.
 CREATE TABLE IF NOT EXISTS routes (
   id      TEXT PRIMARY KEY,
   name    TEXT NOT NULL,
   latlngs TEXT NOT NULL,
-  seq     INTEGER NOT NULL
+  seq     INTEGER NOT NULL,
+  from_id TEXT,
+  to_id   TEXT
 );
 
 -- One phone per group reports positions under a group id.

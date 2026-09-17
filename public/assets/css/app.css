@@ -74,7 +74,7 @@ a:hover { color: var(--color-accent); }
 /* ── mode banners over the map ───────────────────────────────────────── */
 #addbanner, #drawbar {
   position: absolute; left: 0; right: 0; top: calc(52px + env(safe-area-inset-top));
-  z-index: 1100;
+  z-index: 1160;   /* above the alert bar: an operator mid-edit must still reach Undo / Batal / Siap */
 }
 #addbanner {
   display: none;

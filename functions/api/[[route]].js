@@ -31,7 +31,7 @@
      GET  /api/state              { version, points, routes, groups, settings, area, progress?, locked? }
                                   points carry `code` for CC / marshal only
                                   CC key / marshal PIN: all points · X-Group-Pin: revealed points · else MULA only
-     PUT  /api/state              { points, routes }  → { version }               CC
+     PUT  /api/state              { points, routes:[{id,name,latlngs,from?,to?}] } → { version }   CC
      PUT  /api/groups             { groups }  → { version, groups:[{id,pin}] }    CC
      POST /api/groups/login       { pin }     → { id, name, startedAt }          public
      PUT  /api/settings           { smsNumber?, marshalPin? } → { version }       CC
@@ -303,15 +303,21 @@ async function getState(request, env) {
   const [version, pointRows, routes, groups, settings] = await Promise.all([
     getVersion(db),
     db.prepare('SELECT id, type, name, lat, lng, eta_min, code FROM points ORDER BY seq').all(),
-    db.prepare('SELECT id, name, latlngs FROM routes ORDER BY seq').all(),
+    db.prepare('SELECT id, name, latlngs, from_id, to_id FROM routes ORDER BY seq').all(),
     db.prepare('SELECT id, name, started_at FROM groups ORDER BY seq').all(),
     getSettings(db)
   ]);
   const all = pointRows.results.map((p, i) => ({
     id: p.id, type: p.type, name: p.name, lat: p.lat, lng: p.lng, etaMin: p.eta_min, seq: i, code: p.code
   }));
-  const routeList = routes.results.map((r) => ({ ...r, latlngs: JSON.parse(r.latlngs) }));
+  const routeList = routes.results.map((r) => ({
+    id: r.id, name: r.name, latlngs: JSON.parse(r.latlngs), from: r.from_id || null, to: r.to_id || null
+  }));
   const area = programArea(all, routeList);
+  // A route is sent to a participant only once the point it ends at has been
+  // revealed, so a line never gives a hidden checkpoint away. Routes drawn
+  // before endpoints existed have no `to` and are sent as before.
+  let routesOut = routeList;
   // Only the command centre and marshals ever see codes; a participant's
   // phone gets the hidden points locked behind them instead.
   const strip = (p) => ({ ...p, code: undefined });
@@ -322,6 +328,8 @@ async function getState(request, env) {
     const pr = await progressFor(db, who.group, all);
     points = pr.revealed.map(strip);
     progress = { reached: pr.reached, more: pr.more };
+    const shown = new Set(points.map((p) => p.id));
+    routesOut = routeList.filter((r) => !r.to || (shown.has(r.to) && (!r.from || shown.has(r.from))));
     locked = [];
     for (let i = pr.revealed.length; i < all.length; i++) {
       const prev = all[i - 1];
@@ -331,13 +339,14 @@ async function getState(request, env) {
   } else if (who.role === 'public') {
     points = all.filter((p) => p.type === 'start').map(strip);
     progress = { reached: [], more: all.length > points.length };
+    routesOut = routeList.filter((r) => !r.to);
   } else {
     points = all;
   }
   return json({
     version,
     points,
-    routes: routeList,
+    routes: routesOut,
     groups: groups.results.map((g) => ({ id: g.id, name: g.name, startedAt: g.started_at })),
     settings,
     area,
@@ -367,6 +376,8 @@ async function putState(request, env) {
   const takenCodes = new Set();
   const stmts = [db.prepare('DELETE FROM points'), db.prepare('DELETE FROM routes')];
   const seen = new Set();
+  const pointIds = new Set(points.filter((p) => p && isId(p.id)).map((p) => p.id));
+  const pointType = new Map(points.filter((p) => p && isId(p.id)).map((p) => [p.id, p.type === 'start' ? 'start' : 'cp']));
 
   points.forEach((p, i) => {
     if (!p || !isId(p.id) || !isLat(p.lat) || !isLng(p.lng)) throw new HttpError(400, `Titik #${i + 1} tidak sah.`);
@@ -385,8 +396,13 @@ async function putState(request, env) {
     if (!ok) throw new HttpError(400, `Laluan #${i + 1} tidak sah.`);
     if (seen.has(r.id)) throw new HttpError(400, `ID berulang: ${r.id}`);
     seen.add(r.id);
-    stmts.push(db.prepare('INSERT INTO routes (id, name, latlngs, seq) VALUES (?, ?, ?, ?)')
-      .bind(r.id, cleanName(r.name, 'Laluan'), JSON.stringify(r.latlngs.map((ll) => [ll[0], ll[1]])), i));
+    // Endpoints must be points of this program; the end must be a checkpoint.
+    const from = r.from ? String(r.from) : null;
+    const to = r.to ? String(r.to) : null;
+    if (from && !pointIds.has(from)) throw new HttpError(400, `Laluan #${i + 1}: titik mula tidak wujud.`);
+    if (to && (!pointIds.has(to) || pointType.get(to) !== 'cp')) throw new HttpError(400, `Laluan #${i + 1}: titik tamat mesti checkpoint.`);
+    stmts.push(db.prepare('INSERT INTO routes (id, name, latlngs, seq, from_id, to_id) VALUES (?, ?, ?, ?, ?, ?)')
+      .bind(r.id, cleanName(r.name, 'Laluan'), JSON.stringify(r.latlngs.map((ll) => [ll[0], ll[1]])), i, from, to));
   });
 
   stmts.push(bumpVersion(db));

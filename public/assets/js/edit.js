@@ -3,8 +3,8 @@
    core.changed(), which is what pusat.js listens to for pushing to the server. */
 
 import { pathKm } from './geo.js';
-import { askText, askConfirm, notify, toast } from './ui.js';
-import { $, isStart } from './core.js';
+import { askText, askChoice, askConfirm, notify, toast } from './ui.js';
+import { $, isStart, routeLabel } from './core.js';
 
 export function mountEditing(core) {
   const { L, map, state } = core;
@@ -108,6 +108,11 @@ export function mountEditing(core) {
   let drawPts = [];
   let drawLine = null;
   let drawDots = [];
+  let drawFrom = null;   // the point the route starts at; its first vertex
+
+  const pointLabel = (p) => (isStart(p) ? 'MULA' : p.name);
+  const pointChoices = (points, selectedId) =>
+    points.map((p) => ({ value: p.id, label: pointLabel(p), selected: p.id === selectedId }));
 
   function drawRefresh() {
     const latlngs = drawPts.map((p) => [p.lat, p.lng]);
@@ -135,6 +140,25 @@ export function mountEditing(core) {
     drawDots.forEach((dot) => map.removeLayer(dot));
     drawDots = [];
     drawPts = [];
+    drawFrom = null;
+  }
+
+  /** Where the route begins: MULA or a checkpoint. The first vertex snaps there. */
+  async function chooseStart() {
+    if (!state.points.length) {
+      notify({ title: 'Tiada titik', body: 'Tambah MULA atau checkpoint dahulu.' });
+      return null;
+    }
+    // Suggest continuing from where the last route ended.
+    const last = state.routes[state.routes.length - 1];
+    const suggested = (last && last.to) || (state.points.find(isStart) || state.points[0]).id;
+    const id = await askChoice({
+      title: 'Laluan bermula dari mana?',
+      body: 'Titik pertama laluan ditambat ke titik ini. Kemudian ketik peta untuk titik seterusnya, dan Siap untuk pilih checkpoint tamat.',
+      options: pointChoices(state.points, suggested),
+      cancelLabel: 'Batal'
+    });
+    return id ? state.points.find((p) => p.id === id) : null;
   }
 
   function setDrawMode(on) {
@@ -153,9 +177,21 @@ export function mountEditing(core) {
     }
   }
 
-  btnDraw.addEventListener('click', () => setDrawMode(!drawMode));
+  btnDraw.addEventListener('click', async () => {
+    if (drawMode) {
+      setDrawMode(false);
+      return;
+    }
+    const from = await chooseStart();
+    if (!from) return;
+    setDrawMode(true);
+    drawFrom = from;
+    drawAddVertex(L.latLng(from.lat, from.lng));
+    $('drawhint').textContent = 'Dari ' + pointLabel(from) + ' · ketik peta utk titik laluan · Siap utk pilih tamat';
+  });
 
   $('drawUndo').addEventListener('click', () => {
+    if (drawPts.length <= 1) return;   // the start vertex stays
     drawPts.pop();
     const dot = drawDots.pop();
     if (dot) map.removeLayer(dot);
@@ -165,24 +201,36 @@ export function mountEditing(core) {
   $('drawCancel').addEventListener('click', () => setDrawMode(false));
 
   $('drawDone').addEventListener('click', async () => {
-    if (drawPts.length < 2) {
+    const cps = state.points.filter((p) => !isStart(p) && p.id !== (drawFrom && drawFrom.id));
+    if (!cps.length) {
+      notify({ title: 'Tiada checkpoint tamat', body: 'Laluan mesti berakhir di checkpoint. Tambah checkpoint dahulu.' });
+      return;
+    }
+    // Suggest the point after the start in sequence.
+    const fromIndex = drawFrom ? state.points.findIndex((p) => p.id === drawFrom.id) : -1;
+    const nextCp = state.points.slice(fromIndex + 1).find((p) => !isStart(p));
+    const toId = await askChoice({
+      title: 'Laluan tamat di checkpoint mana?',
+      body: 'Titik terakhir laluan ditambat ke checkpoint ini. Peserta hanya menerima laluan ini bila checkpoint itu didedahkan kepadanya.',
+      options: pointChoices(cps, nextCp ? nextCp.id : cps[0].id),
+      cancelLabel: 'Batal'
+    });
+    if (!toId) return;
+    const to = state.points.find((p) => p.id === toId);
+    const latlngs = drawPts.map((p) => [p.lat, p.lng]);
+    const lastPt = latlngs[latlngs.length - 1];
+    if (!lastPt || lastPt[0] !== to.lat || lastPt[1] !== to.lng) latlngs.push([to.lat, to.lng]);
+    if (latlngs.length < 2) {
       notify({ title: 'Laluan terlalu pendek', body: 'Perlu sekurang-kurangnya 2 titik.' });
       return;
     }
-    const latlngs = drawPts.map((p) => [p.lat, p.lng]);
-    const suggested = 'Laluan ' + (state.routes.length + 1);
-    const name = await askText({
-      title: 'Simpan laluan',
-      body: '± ' + pathKm(latlngs).toFixed(2) + ' km · ' + latlngs.length + ' titik',
-      value: suggested,
-      label: 'Nama laluan'
-    });
-    if (name === null) return;
-    state.routes.push({ id: 'rt_' + Date.now(), name: name || suggested, latlngs });
+    const route = { id: 'rt_' + Date.now(), from: drawFrom ? drawFrom.id : null, to: to.id, latlngs };
+    route.name = routeLabel(route, state.points);
+    state.routes.push(route);
     core.changed();
     setDrawMode(false);
     core.rebuildRoutes();
-    toast('Laluan disimpan.');
+    toast('Laluan disimpan: ' + route.name + ' · ± ' + pathKm(latlngs).toFixed(2) + ' km');
   });
 
   async function deleteRoute(id) {

@@ -49,6 +49,19 @@ export const LAYERS = {
 const CONTOUR = { ...LAYERS.topo, opacity: 0.45 };
 
 export const isStart = (p) => p.type === 'start';
+
+/** "MULA → Checkpoint 2" from a route's endpoints, or its stored name. */
+export function routeLabel(route, points) {
+  const name = (id) => {
+    const p = points.find((x) => x.id === id);
+    return p ? (isStart(p) ? 'MULA' : p.name) : null;
+  };
+  const a = route.from ? name(route.from) : null;
+  const b = route.to ? name(route.to) : null;
+  if (a && b) return a + ' → ' + b;
+  if (b) return '→ ' + b;
+  return route.name;
+}
 export const coordText = (p) => p.lat.toFixed(6) + ', ' + p.lng.toFixed(6);
 
 /** Short label for a group: the number in its name if it has one, else initials. */
@@ -235,7 +248,7 @@ export function boot({ editable = false } = {}) {
       line.bindPopup(() => {
         const wrap = el('div');
         wrap.append(
-          el('div', 'pop-name', route.name),
+          el('div', 'pop-name', routeLabel(route, state.points)),
           el('div', 'pop-co', '± ' + pathKm(route.latlngs).toFixed(2) + ' km · ' + route.latlngs.length + ' titik')
         );
         if (editable) {
@@ -447,7 +460,7 @@ export function boot({ editable = false } = {}) {
 
       const text = el('span');
       text.append(
-        el('span', 'nm', route.name), el('br'),
+        el('span', 'nm', routeLabel(route, state.points)), el('br'),
         el('span', 'co', route.latlngs.length + ' titik')
       );
       row.append(text);

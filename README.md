@@ -74,9 +74,13 @@ checkpoint seterusnya dibuka **serta-merta tanpa talian**, dan catatan
 "tiba" beratur dalam telefon lalu dihantar (`source: 'qr'`) bila ada
 isyarat. Kod juga boleh dibaca melalui walkie-talkie atau dibalas oleh pusat
 kawalan melalui SMS. Jangan letak semua kod pada satu helai di trek.
-Pangkalan data lama: jalankan `migrations/0002-point-code.sql` sekali. Laluan cadangan **tidak** ditapis — jika laluan
-mendedahkan lokasi checkpoint, lukis laluan hanya setakat checkpoint
-seterusnya, atau jangan lukis.
+Pangkalan data lama: jalankan `migrations/0002-point-code.sql` sekali. Laluan cadangan **bermula di MULA atau checkpoint
+dan berakhir di checkpoint** (dipilih semasa melukis; titik pertama dan
+terakhir ditambat, nama automatik "MULA → Checkpoint 1"). Peserta hanya
+menerima laluan yang checkpoint tamatnya sudah didedahkan, jadi garisan
+tidak mendedahkan checkpoint tersembunyi. Laluan lama tanpa titik tamat
+dihantar seperti dahulu. Pangkalan data lama: jalankan juga
+`migrations/0003-route-endpoints.sql` sekali.
 
 ### Kawasan tiada isyarat — apa yang menjaga keselamatan
 
@@ -237,7 +241,7 @@ design/                 bundle serahan Claude Design (rujukan)
 | Kaedah | Laluan | Siapa | Kegunaan |
 | --- | --- | --- | --- |
 | GET | `/api/state` | semua | checkpoint (+ jadual), laluan, kumpulan (+ masa mula), tetapan, versi, `area` (kotak semua titik + laluan, tambah 1.5 km, untuk peta offline). Kunci / PIN marshal: semua titik; `X-Group-Pin`: titik yang didedahkan + `progress`; tanpa apa-apa: MULA sahaja |
-| PUT | `/api/state` | kunci | ganti checkpoint + laluan |
+| PUT | `/api/state` | kunci | ganti checkpoint + laluan (`from`, `to` = id titik; `to` mesti checkpoint) |
 | PUT | `/api/groups` | kunci | ganti senarai kumpulan; masa mula dan PIN dikekalkan jika tidak dihantar, `resetPin: true` jana PIN baharu; pulang PIN setiap kumpulan |
 | POST | `/api/groups/login` | telefon | `{ pin }` → kumpulan yang memiliki PIN itu |
 | PUT | `/api/settings` | kunci | nombor SMS, PIN marshal |
@@ -255,7 +259,7 @@ Melayu dan dipaparkan terus dalam app.
 
 | Cache | Isi | Dibuang bila |
 | --- | --- | --- |
-| `jl-shell-v13` | fail app + salinan terakhir `/api/state` | versi baharu digunakan |
+| `jl-shell-v14` | fail app + salinan terakhir `/api/state` | versi baharu digunakan |
 | `jl-tiles-v1` | tile yang **sengaja** disimpan | hanya melalui butang *Kosongkan* |
 | `jl-tiles-auto-v1` | tile yang terpapar semasa melayari | automatik, melebihi 1500 tile |
 
