@@ -16,6 +16,10 @@
 }
 
 html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+/* The canvas colour: whatever band a phone's layout misses (iOS standalone can
+   leave the home-indicator strip unpainted until the first resize) shows the
+   panel colour, never white. */
+html { background: var(--color-neutral-100); }
 body {
   font-family: var(--font-body);
   background: var(--color-bg);
@@ -26,6 +30,9 @@ a { color: var(--color-accent-700); }
 a:hover { color: var(--color-accent); }
 
 #app { position: fixed; inset: 0; display: flex; flex-direction: column; }
+/* iOS standalone: inset:0 alone can stop short of the home-indicator band; the
+   dynamic viewport height reaches the real bottom of the screen. */
+@supports (height: 100dvh) { #app { height: 100dvh; } }
 
 /* ── top bar ─────────────────────────────────────────────────────────── */
 #topbar {
@@ -117,9 +124,10 @@ a:hover { color: var(--color-accent); }
   max-height: 46vh;
   background: var(--color-neutral-100);
   border-top: 2px solid var(--jl-ink);
-  padding-bottom: env(safe-area-inset-bottom);
   z-index: 1200;
 }
+/* Pages without a tab bar (none today) keep the safe area on the sheet itself. */
+#sheet:not(:has(#tabbar)) { padding-bottom: env(safe-area-inset-bottom); }
 #sheethead {
   display: flex; align-items: center; gap: 10px;
   padding: 10px 14px; min-height: 44px; box-sizing: border-box;
@@ -148,6 +156,9 @@ a:hover { color: var(--color-accent); }
   flex: none; display: flex;
   border-top: 2px solid var(--jl-ink);
   background: var(--color-neutral-100);
+  /* The bar owns the home-indicator band, like a native tab bar: the tabs sit
+     above it and the bar's own colour fills it, so nothing reads as empty. */
+  padding-bottom: env(safe-area-inset-bottom);
 }
 #tabbar [role="tab"] {
   flex: 1; min-height: 56px; padding: 8px 4px 6px;
@@ -311,7 +322,7 @@ a:hover { color: var(--color-accent); }
 }
 #toast.on { display: block; }
 /* Above the tab bar on the participant page, so a notice never hides the tabs. */
-body:has(#tabbar) #toast { bottom: calc(70px + env(safe-area-inset-bottom)); }
+body:has(#tabbar) #toast { bottom: calc(66px + env(safe-area-inset-bottom)); }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; }
