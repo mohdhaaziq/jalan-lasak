@@ -49,6 +49,10 @@ telefon kumpulan ──POST /api/positions──▶ ┌────────�
     dengan cap masa asalnya dan dihantar sekali gus bila ada isyarat, jadi
     pusat kawalan nampak jejak penuh, bukan lubang;
   - kembali ke latar depan → sampel dan hantar serta-merta.
+- **Titik biru** kedudukan telefon ada **kon arah hadap** (seperti Google
+  Maps): ikut kompas telefon (iOS minta kebenaran pada ketikan pertama),
+  atau arah pergerakan GPS bila berjalan; disembunyikan bila arah tidak
+  diketahui. Peta kekal utara di atas.
 - **Pusat kawalan** menyegarkan kedudukan setiap 15 saat. Kumpulan senyap
   > 10 minit ditanda, > 20 minit merah; SOS diletak paling atas dengan
   amaran berbunyi, dan kekal sehingga telefon itu membatalkannya.
@@ -264,7 +268,7 @@ Melayu dan dipaparkan terus dalam app.
 
 | Cache | Isi | Dibuang bila |
 | --- | --- | --- |
-| `jl-shell-v22` | fail app + salinan terakhir `/api/state` | versi baharu digunakan |
+| `jl-shell-v23` | fail app + salinan terakhir `/api/state` | versi baharu digunakan |
 | `jl-tiles-v1` | tile yang **sengaja** disimpan | hanya melalui butang *Kosongkan* |
 | `jl-tiles-auto-v1` | tile yang terpapar semasa melayari | automatik, melebihi 1500 tile |
 

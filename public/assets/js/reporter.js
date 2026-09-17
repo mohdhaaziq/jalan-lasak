@@ -91,6 +91,8 @@ export function createReporter({ getGroup, getPin, getDevice, onFix, onStatus, o
         lat: pos.coords.latitude,
         lng: pos.coords.longitude,
         acc: pos.coords.accuracy,
+        heading: Number.isFinite(pos.coords.heading) ? pos.coords.heading : null,   // direction of travel, if moving
+        speed: Number.isFinite(pos.coords.speed) ? pos.coords.speed : null,         // m/s
         at: Date.now(),
         battery: await batteryLevel()
       };

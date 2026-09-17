@@ -88,7 +88,8 @@ export function boot({ editable = false } = {}) {
   let myCircle = null;
   let follow = false;
   let gpsWatch = null;
-  let deviceHeading = null;
+  let deviceHeading = null;   // where the phone points, from its compass (degrees clockwise from north)
+  let gpsCourse = null;       // where the phone is moving, from GPS, when walking fast enough
 
   const markers = {};
   const routeLayers = {};
@@ -308,22 +309,53 @@ export function boot({ editable = false } = {}) {
 
   const btnLocate = $('btnLocate');
 
+  /**
+   * The blue dot, with a beam showing which way the phone faces — the
+   * compass when the phone has one, the direction of travel from GPS while
+   * walking, nothing when neither is known. The map stays north-up, so the
+   * beam's rotation is the heading itself.
+   */
+  const meIcon = L.divIcon({
+    className: '',
+    html: '<div class="jl-me"><div class="beam"></div><div class="dot"></div></div>',
+    iconSize: [0, 0],
+    iconAnchor: [0, 0]
+  });
+
+  function facing() {
+    if (deviceHeading !== null) return deviceHeading;
+    if (gpsCourse !== null) return gpsCourse;
+    return null;
+  }
+
+  function updateBeam() {
+    if (!myMarker) return;
+    const root = myMarker.getElement();
+    if (!root) return;
+    const beam = root.querySelector('.beam');
+    const heading = facing();
+    if (heading === null) {
+      beam.style.display = 'none';
+      return;
+    }
+    beam.style.display = '';
+    beam.style.transform = `rotate(${Math.round(heading)}deg)`;
+  }
+
   function setMyPos(latlng, accuracy) {
     myPos = { lat: latlng.lat, lng: latlng.lng };
     const acc = accuracy || 30;
     if (!myMarker) {
-      myMarker = L.circleMarker(myPos, {
-        radius: 8, color: '#fff', weight: 2,
-        fillColor: '#2a78d6', fillOpacity: 1, interactive: false
-      }).addTo(map);
       myCircle = L.circle(myPos, {
         radius: acc, color: '#2a78d6', weight: 1,
         fillColor: '#2a78d6', fillOpacity: 0.12, interactive: false
       }).addTo(map);
+      myMarker = L.marker(myPos, { icon: meIcon, interactive: false, zIndexOffset: 900, keyboard: false }).addTo(map);
     } else {
       myMarker.setLatLng(myPos);
       myCircle.setLatLng(myPos).setRadius(acc);
     }
+    updateBeam();
     if (follow) map.panTo(myPos);
     renderPointList();
     updateStrip();
@@ -336,7 +368,10 @@ export function boot({ editable = false } = {}) {
       return false;
     }
     gpsWatch = navigator.geolocation.watchPosition((position) => {
-      setMyPos({ lat: position.coords.latitude, lng: position.coords.longitude }, position.coords.accuracy);
+      const c = position.coords;
+      // A GPS course is only meaningful while moving; below walking pace it is noise.
+      gpsCourse = Number.isFinite(c.heading) && Number.isFinite(c.speed) && c.speed >= 0.5 ? c.heading : gpsCourse;
+      setMyPos({ lat: c.latitude, lng: c.longitude }, c.accuracy);
     }, (error) => {
       notify({ title: 'Gagal dapatkan lokasi', body: error.message });
       stopFollow();
@@ -372,24 +407,21 @@ export function boot({ editable = false } = {}) {
     if (heading !== null) {
       deviceHeading = heading;
       updateStrip();
+      updateBeam();
     }
   }
 
   if (window.DeviceOrientationEvent) {
+    // Listen from the start: without permission the events simply never come.
+    window.addEventListener('deviceorientationabsolute', onOrientation);
+    window.addEventListener('deviceorientation', onOrientation);
     if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-      // iOS only grants the sensor from inside a user gesture.
+      // iOS (and newer Chrome) only grant the sensor from inside a user gesture.
       const request = () => {
         document.body.removeEventListener('click', request);
-        DeviceOrientationEvent.requestPermission()
-          .then((result) => {
-            if (result === 'granted') window.addEventListener('deviceorientation', onOrientation);
-          })
-          .catch(() => { /* declined — bearing still shows, arrow stays north-up */ });
+        DeviceOrientationEvent.requestPermission().catch(() => { /* declined — the beam follows GPS travel instead */ });
       };
       document.body.addEventListener('click', request);
-    } else {
-      window.addEventListener('deviceorientationabsolute', onOrientation);
-      window.addEventListener('deviceorientation', onOrientation);
     }
   }
 
@@ -706,6 +738,7 @@ export function boot({ editable = false } = {}) {
     setTarget,
     myPos: () => myPos,
     setMyPos,
+    setCourse: (deg) => { gpsCourse = Number.isFinite(deg) ? deg : null; updateBeam(); },
     changed,
     applyState,
     setScheduleStart: (ms) => { scheduleStart = Number.isFinite(ms) ? ms : null; renderPointList(); },

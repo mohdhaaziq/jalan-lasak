@@ -343,7 +343,11 @@ const reporter = createReporter({
   getGroup: () => group,
   getPin: () => groupPin,
   getDevice: () => device,
-  onFix: (fix) => core.setMyPos(fix, fix.acc),
+  onFix: (fix) => {
+    // Facing beam: the direction of travel counts only at walking pace or faster.
+    if (fix.heading !== null && fix.speed !== null && fix.speed >= 0.5) core.setCourse(fix.heading);
+    core.setMyPos(fix, fix.acc);
+  },
   onStatus: (s) => {
     const bits = [];
     if (s.lastDeliveredAt) bits.push('Dihantar ' + clock(s.lastDeliveredAt));
