@@ -414,7 +414,8 @@ export function boot({ editable = false } = {}) {
     });
 
     const count = state.points.filter((p) => !isStart(p)).length;
-    $('cpcount').textContent = count + ' checkpoint' + (editable ? ' · tekan lama peta utk tambah' : '');
+    // The command centre shows this in a section head; the participant tab bar shows just the number.
+    $('cpcount').textContent = editable ? count + ' checkpoint · tekan lama peta utk tambah' : String(count);
   }
 
   function renderRouteList() {
@@ -471,13 +472,15 @@ export function boot({ editable = false } = {}) {
   /* ── sheet + fit ────────────────────────────────────────────────────── */
 
   const sheet = $('sheet');
-  const sheetHead = $('sheethead');
-  sheetHead.addEventListener('click', () => {
-    const open = sheet.classList.toggle('open');
-    sheetHead.setAttribute('aria-expanded', String(open));
-    // The map's usable height changed with the sheet.
-    setTimeout(() => map.invalidateSize({ pan: false }), 210);
-  });
+  const sheetHead = $('sheethead');   // command centre only; the participant page uses tabs
+  if (sheetHead) {
+    sheetHead.addEventListener('click', () => {
+      const open = sheet.classList.toggle('open');
+      sheetHead.setAttribute('aria-expanded', String(open));
+      // The map's usable height changed with the sheet.
+      setTimeout(() => map.invalidateSize({ pan: false }), 210);
+    });
+  }
 
   function fitAll(extra = []) {
     const coords = state.points.map((p) => [p.lat, p.lng]).concat(extra);

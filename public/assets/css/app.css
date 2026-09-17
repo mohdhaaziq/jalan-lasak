@@ -135,6 +135,37 @@ a:hover { color: var(--color-accent); }
 #sheetbody { display: none; overflow-y: auto; -webkit-overflow-scrolling: touch; border-top: 2px solid var(--jl-rule); }
 #sheet.open #sheetbody { display: block; }
 
+/* ── participant: tabbed panel + bottom tab bar ──────────────────────── */
+#panes { display: none; overflow-y: auto; -webkit-overflow-scrolling: touch; min-height: 0; }
+#sheet.open #panes { display: block; }
+.pane { border-top: 2px solid var(--jl-rule); }
+.pane[hidden] { display: none; }
+#report .who { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+#report .who .n { font-family: var(--font-heading); font-weight: 800; font-size: 17px; }
+#pane-checkpoint .sect-head:first-child, #pane-peta .sect-head:first-child { border-top: 0; }
+
+#tabbar {
+  flex: none; display: flex;
+  border-top: 2px solid var(--jl-ink);
+  background: var(--color-neutral-100);
+}
+#tabbar [role="tab"] {
+  flex: 1; min-height: 56px; padding: 8px 4px 6px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  background: transparent; color: var(--jl-ink);
+  border: 0; border-left: 2px solid var(--jl-ink); border-radius: var(--radius-md);
+  font-family: var(--font-heading); font-size: 10px; font-weight: 700;
+  letter-spacing: .06em; text-transform: uppercase; cursor: pointer; user-select: none;
+}
+#tabbar [role="tab"]:first-child { border-left: 0; }
+#tabbar [role="tab"] svg { width: 22px; height: 22px; }
+#tabbar [role="tab"] .n { font-weight: 400; color: var(--jl-muted); letter-spacing: 0; margin-left: 2px; }
+#tabbar [role="tab"] .n:empty { display: none; }
+#tabbar [role="tab"]:hover { background: var(--color-neutral-200); }
+#tabbar [role="tab"][aria-selected="true"] { background: var(--jl-ink); color: var(--jl-on-ink); }
+#tabbar [role="tab"][aria-selected="true"] .n { color: var(--jl-muted-on-ink); }
+#tabbar [role="tab"]:focus-visible { outline: 3px solid var(--color-accent); outline-offset: -3px; }
+
 /* ── compass strip ───────────────────────────────────────────────────── */
 #strip {
   display: flex; align-items: center; gap: 12px;
@@ -272,6 +303,8 @@ a:hover { color: var(--color-accent); }
   font-size: 12px; letter-spacing: .02em;
 }
 #toast.on { display: block; }
+/* Above the tab bar on the participant page, so a notice never hides the tabs. */
+body:has(#tabbar) #toast { bottom: calc(70px + env(safe-area-inset-bottom)); }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; }
