@@ -195,7 +195,7 @@ async function progressFor(db, groupId, points) {
   return {
     revealed,
     reached: points.filter((p) => reached.has(p.id)).map((p) => p.id),
-    hidden: points.length - revealed.length
+    more: revealed.length < points.length   // whether any checkpoint is still to come — never how many
   };
 }
 
@@ -259,10 +259,10 @@ async function getState(request, env) {
   if (who.role === 'group') {
     const pr = await progressFor(db, who.group, points);
     points = pr.revealed;
-    progress = { reached: pr.reached, hidden: pr.hidden };
+    progress = { reached: pr.reached, more: pr.more };
   } else if (who.role === 'public') {
     const start = points.filter((p) => p.type === 'start');
-    progress = { reached: [], hidden: points.length - start.length };
+    progress = { reached: [], more: points.length > start.length };
     points = start;
   }
   return json({

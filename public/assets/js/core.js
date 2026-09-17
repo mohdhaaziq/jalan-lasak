@@ -415,11 +415,12 @@ export function boot({ editable = false } = {}) {
       wrap.append(row);
     });
 
-    // Participants see checkpoints one at a time; say how many are still to come.
-    const hidden = state.progress ? state.progress.hidden : 0;
-    if (hidden > 0) {
-      wrap.append(el('div', 'empty hidden-cp',
-        hidden + ' checkpoint lagi — didedahkan bila kumpulan anda tiba di checkpoint seterusnya.'));
+    // Participants see checkpoints one at a time; say that more follow, never how many.
+    if (state.progress && state.progress.more) {
+      const last = state.points[state.points.length - 1];
+      wrap.append(el('div', 'empty hidden-cp', last && !isStart(last)
+        ? 'Checkpoint seterusnya didedahkan bila kumpulan anda tiba di ' + last.name + '.'
+        : 'Checkpoint pertama didedahkan bila anda masuk dengan PIN kumpulan.'));
     }
 
     const count = state.points.filter((p) => !isStart(p)).length;
