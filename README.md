@@ -180,8 +180,12 @@ Dua manual PDF lengkap dengan tangkapan skrin, diedarkan oleh penganjur
 | **Manual Peserta** | ketua kumpulan | masuk PIN, simpan peta offline, kekalkan skrin hidup, tab Kumpulan / Checkpoint / Peta, kod checkpoint, SOS dan SMS, bila tiada isyarat, penyelesaian masalah |
 | **Manual Pusat Kawalan & Marshal** | operator pusat kawalan, marshal | senarai semak sebelum program, kumpulan dan PIN, tetapan, checkpoint dan jadual, kod checkpoint dan cetak, memantau kumpulan, daftar masuk manual dan SMS, marshal langkah demi langkah, prosedur kecemasan |
 
+| **Radio Amatur Kecemasan** (satu muka surat) | marshal, sweep, pusat kawalan yang ada pengendali berlesen | tujuh saluran VHF untuk diprogram (simplex daerah Hulu Selangor V46 145.575, repeater HUSAR Bukit Beruntung, MARTS dan MARES Gunung Ulu Kali, Bukit Fraser, panggilan kebangsaan 145.500), skrip panggilan kecemasan, senarai semak ujian sebelum program |
+
 Tangkapan skrin dalam manual dibuat dari pelayan tempatan dengan data demo;
-PIN dan kod di dalamnya bukan data sebenar.
+PIN dan kod di dalamnya bukan data sebenar. Frekuensi repeater dalam helaian
+radio datang dari senarai awam (MARL 2019, ASTRA 2022, RepeaterBook 2024) dan
+mesti diuji di lokasi sebelum program.
 
 ### Sebelum program
 
