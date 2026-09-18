@@ -43,12 +43,17 @@ export function watchViewport(onChange) {
   setTimeout(run, 500);
 }
 
-export function mountTabs({ map, storageKey, defaultPane }) {
-  watchViewport();
+/**
+ * @param collapsible  tapping the active tab closes the panel (map pages); false keeps one pane always open
+ * @param onShow       called with the pane's name (or null) after it is shown
+ * @param onViewport   called whenever the app is resized to the screen
+ */
+export function mountTabs({ map, storageKey, defaultPane, collapsible = true, onShow, onViewport }) {
+  watchViewport(onViewport);
 
   const tabs = [...document.querySelectorAll('#tabbar [role="tab"]')];
   const sheet = $('sheet');
-  if (!tabs.length || !sheet) return null;
+  if (!tabs.length) return null;
 
   function show(name) {
     for (const tab of tabs) {
@@ -58,15 +63,17 @@ export function mountTabs({ map, storageKey, defaultPane }) {
       const pane = $('pane-' + tab.dataset.pane);
       if (pane) pane.hidden = !on;
     }
-    sheet.classList.toggle('open', name !== null);
+    if (sheet) sheet.classList.toggle('open', name !== null);
     try { localStorage.setItem(storageKey, name || ''); } catch { /* storage unavailable */ }
     // The map's usable height changed with the panel.
     if (map) setTimeout(() => map.invalidateSize({ pan: false }), 210);
+    if (onShow) onShow(name);
   }
 
   for (const tab of tabs) {
     tab.addEventListener('click', () => {
       const open = tab.getAttribute('aria-selected') === 'true';
+      if (open && !collapsible) return;
       show(open ? null : tab.dataset.pane);
     });
     tab.addEventListener('keydown', (event) => {
@@ -84,6 +91,6 @@ export function mountTabs({ map, storageKey, defaultPane }) {
 
   let saved = defaultPane;
   try { saved = localStorage.getItem(storageKey) ?? defaultPane; } catch { /* storage unavailable */ }
-  show(saved === '' ? null : (tabs.some((t) => t.dataset.pane === saved) ? saved : defaultPane));
+  show(saved === '' && collapsible ? null : (tabs.some((t) => t.dataset.pane === saved) ? saved : defaultPane));
   return { show };
 }

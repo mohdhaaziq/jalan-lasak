@@ -11,7 +11,7 @@ import { askText, askChoice, askConfirm, notify, toast } from './ui.js';
 import { LAYERS, isStart, groupLabel } from './core.js';
 import { distM, fmtDist } from './geo.js';
 import { scheduleFor, paceEstimate, paceLabel } from './schedule.js';
-import { watchViewport } from './tabs.js';
+import { mountTabs } from './tabs.js';
 
 const POSITIONS_POLL_MS = 30 * 1000;
 const STALE_WARN_MS = 10 * 60 * 1000;
@@ -69,8 +69,17 @@ const map = L.map('mmap', { zoomControl: false, attributionControl: true });
 map.attributionControl.setPrefix(false);
 L.tileLayer(LAYERS.osm.template, { maxZoom: LAYERS.osm.maxZoom, attribution: LAYERS.osm.attribution }).addTo(map);
 map.setView([3.556879, 101.632263], 12);   // MULA, until the program has loaded
-// Fill the whole screen (iOS home-screen quirk included) and keep the map drawn to its box.
-watchViewport(() => setTimeout(() => map.invalidateSize({ pan: false }), 60));
+// The map lives in the Peta tab: Leaflet cannot measure a hidden box, so it is
+// re-measured (and framed once) each time the tab opens or the screen changes.
+let framedVisible = false;
+function refreshMap() {
+  if ($('pane-peta').hidden) return;
+  map.invalidateSize({ pan: false });
+  if (!framedVisible && (state.points.length || positions.some((g) => g.last))) {
+    framedVisible = true;
+    fitAll();
+  }
+}
 
 const pointLayer = L.layerGroup().addTo(map);
 const routeLayer = L.layerGroup().addTo(map);
@@ -315,6 +324,7 @@ setInterval(() => syncState().then(render), 5 * 60 * 1000);
 /** This checkpoint's code, big, and as a QR of the participant URL. */
 function renderCode(p) {
   const box = $('mcode');
+  $('mcodeempty').hidden = !!(p && p.code);
   if (!p || !p.code) {
     box.hidden = true;
     return;
@@ -328,7 +338,7 @@ function renderCode(p) {
     const q = window.qrcode(0, 'M');
     q.addData(new URL('./?kod=' + p.code, location.href).href);
     q.make();
-    qr.innerHTML = q.createSvgTag({ cellSize: 5, margin: 2, scalable: true });
+    qr.innerHTML = q.createSvgTag({ cellSize: 6, margin: 2, scalable: true });
   } catch { /* leave the code as text */ }
 }
 
@@ -356,6 +366,7 @@ function render() {
     return;
   }
   const here = recordedHere();
+  $('tibacount').textContent = here.size + '/' + state.groups.length;
   const seen = new Map(positions.map((g) => [g.id, g.last]));
   state.groups.forEach((g, i) => {
     const at = here.get(g.id);
@@ -408,6 +419,14 @@ if ('serviceWorker' in navigator) {
     }).catch(() => {});
   });
 }
+
+/* ── bottom tab bar: Tiba · Kod · Peta ──────────────────────────────── */
+
+mountTabs({
+  map, storageKey: 'jl_tab_marshal', defaultPane: 'tiba', collapsible: false,
+  onShow: () => setTimeout(refreshMap, 240),
+  onViewport: () => setTimeout(refreshMap, 60)
+});
 
 /* ── init ───────────────────────────────────────────────────────────── */
 
