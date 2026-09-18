@@ -18,7 +18,7 @@
 <script src="vendor/qrcode/qrcode.js" defer></script>
 <script src="assets/js/marshal.js" type="module"></script>
 </head>
-<body class="page">
+<body>
 <div id="app" class="marshal">
 
   <header id="topbar">
@@ -28,59 +28,73 @@
     </div>
   </header>
 
-  <main id="mbody">
-    <div class="mhead">
-      <div>
-        <div class="t">Checkpoint</div>
-        <div class="v" id="pointname">Belum dipilih</div>
-      </div>
-      <button type="button" class="jl-btn" id="btnPoint">Pilih checkpoint</button>
-    </div>
-    <div class="stat pad top" id="mstat"></div>
-    <div class="stat pad" id="mposstat"></div>
+  <div id="map" role="application" aria-label="Peta kedudukan kumpulan"></div>
 
-    <div id="mpanes">
+  <div id="fabs">
+    <button type="button" class="fab" id="btnMFit" title="Lihat semua" aria-label="Lihat semua kumpulan dan checkpoint">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+    </button>
+  </div>
+
+  <section id="sheet" class="open">
+    <!-- Which checkpoint this phone stands at: floats over the map's bottom edge, like the participant's target card. -->
+    <div id="mcard">
+      <span class="badge" id="mbadge" aria-hidden="true">?</span>
+      <span class="what">
+        <span class="tgt" id="pointname">Belum dipilih</span>
+        <span class="sub" id="mposstat"></span>
+      </span>
+      <button type="button" class="jl-btn on-ink sm" id="btnPoint">Pilih checkpoint</button>
+    </div>
+
+    <div id="panes">
       <section class="pane" id="pane-tiba" role="tabpanel" aria-labelledby="tab-tiba">
+        <div class="stat pad top" id="mstat"></div>
         <div id="mlist"></div>
-        <div class="foot"><a href="./">Paparan peserta →</a></div>
       </section>
 
       <section class="pane" id="pane-kod" role="tabpanel" aria-labelledby="tab-kod" hidden>
         <div id="mcode" hidden>
           <div class="codebox">
             <div id="mqr" aria-hidden="true"></div>
-            <div class="big" id="mcodetext">—</div>
-            <div class="desc">Ketua kumpulan taip kod ini, atau imbas QR, untuk membuka checkpoint seterusnya di telefonnya — berfungsi tanpa isyarat. Tetap tekan <b>Tiba</b> untuk kumpulan itu.</div>
+            <div class="side">
+              <div class="big" id="mcodetext">—</div>
+              <div class="desc">Ketua kumpulan taip kod ini, atau imbas QR, untuk membuka checkpoint seterusnya di telefonnya — berfungsi tanpa isyarat. Tetap tekan <b>Tiba</b> untuk kumpulan itu.</div>
+            </div>
           </div>
         </div>
         <div class="empty" id="mcodeempty">Pilih checkpoint anda dahulu untuk melihat kodnya.</div>
       </section>
 
       <section class="pane" id="pane-peta" role="tabpanel" aria-labelledby="tab-peta" hidden>
-        <div id="mmapwrap">
-          <div id="mmap" role="application" aria-label="Peta kedudukan kumpulan"></div>
-          <button type="button" class="fab" id="btnMFit" title="Lihat semua" aria-label="Lihat semua kumpulan dan checkpoint">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
-          </button>
+        <div id="layers" role="group" aria-label="Lapisan peta">
+          <button type="button" data-layer="osm" class="on" aria-pressed="true">Denai OSM</button>
+          <button type="button" data-layer="topo" aria-pressed="false">Topo</button>
+          <button type="button" data-layer="sat" aria-pressed="false">Satelit</button>
         </div>
+        <button type="button" class="check" id="contourrow" aria-pressed="false">
+          <span class="box" aria-hidden="true"></span>
+          <span><b>Kontur</b> — lapisan topo lutsinar atas satelit</span>
+        </button>
+        <div class="empty">Penanda bernombor ialah kumpulan: merah berdenyut SOS, kelabu senyap lama. Checkpoint anda dibingkai merah. Ketik tab aktif untuk peta penuh.</div>
       </section>
     </div>
-  </main>
 
-  <nav id="tabbar" role="tablist" aria-label="Bahagian">
-    <button type="button" role="tab" id="tab-tiba" data-pane="tiba" aria-selected="true" aria-controls="pane-tiba">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 12l5 5L20 6"/></svg>
-      <span>Tiba <span class="n" id="tibacount"></span></span>
-    </button>
-    <button type="button" role="tab" id="tab-kod" data-pane="kod" aria-selected="false" aria-controls="pane-kod" tabindex="-1">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3M21 14v7h-7M17 21v-1"/></svg>
-      <span>Kod</span>
-    </button>
-    <button type="button" role="tab" id="tab-peta" data-pane="peta" aria-selected="false" aria-controls="pane-peta" tabindex="-1">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3 3 8l9 5 9-5-9-5Z"/><path d="m3 12 9 5 9-5"/><path d="m3 16 9 5 9-5"/></svg>
-      <span>Peta</span>
-    </button>
-  </nav>
+    <nav id="tabbar" role="tablist" aria-label="Bahagian">
+      <button type="button" role="tab" id="tab-tiba" data-pane="tiba" aria-selected="true" aria-controls="pane-tiba">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 12l5 5L20 6"/></svg>
+        <span>Tiba <span class="n" id="tibacount"></span></span>
+      </button>
+      <button type="button" role="tab" id="tab-kod" data-pane="kod" aria-selected="false" aria-controls="pane-kod" tabindex="-1">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3M21 14v7h-7M17 21v-1"/></svg>
+        <span>Kod</span>
+      </button>
+      <button type="button" role="tab" id="tab-peta" data-pane="peta" aria-selected="false" aria-controls="pane-peta" tabindex="-1">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3 3 8l9 5 9-5-9-5Z"/><path d="m3 12 9 5 9-5"/><path d="m3 16 9 5 9-5"/></svg>
+        <span>Peta</span>
+      </button>
+    </nav>
+  </section>
 
 </div>
 <div id="toast" role="status" aria-live="polite"></div>

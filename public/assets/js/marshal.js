@@ -6,7 +6,7 @@
    Recording a group at MULA is what starts that group's clock. */
 
 import { getState, postCheckins, getPositions } from './api.js';
-import { loadState, saveState, loadMarshal, saveMarshal, loadCheckinQueue, saveCheckinQueue, deviceId } from './store.js';
+import { loadState, saveState, loadMarshal, saveMarshal, loadCheckinQueue, saveCheckinQueue, deviceId, loadPrefs, savePrefs } from './store.js';
 import { askText, askChoice, askConfirm, notify, toast } from './ui.js';
 import { LAYERS, isStart, groupLabel } from './core.js';
 import { distM, fmtDist } from './geo.js';
@@ -65,18 +65,61 @@ async function syncState() {
 /* ── map: the program, and where every group is right now ───────────── */
 
 const L = window.L;
-const map = L.map('mmap', { zoomControl: false, attributionControl: true });
+const map = L.map('map', { zoomControl: false, attributionControl: true });
 map.attributionControl.setPrefix(false);
-L.tileLayer(LAYERS.osm.template, { maxZoom: LAYERS.osm.maxZoom, attribution: LAYERS.osm.attribution }).addTo(map);
+L.control.scale({ imperial: false, position: 'bottomleft', maxWidth: 120 }).addTo(map);
 map.setView([3.556879, 101.632263], 12);   // MULA, until the program has loaded
-// The map lives in the Peta tab: Leaflet cannot measure a hidden box, so it is
-// re-measured (and framed once) each time the tab opens or the screen changes.
-let framedVisible = false;
+
+/* — base layers, as on the participant map; the choice is remembered on this phone — */
+const prefs = loadPrefs();
+const baseLayers = {};
+for (const [key, source] of Object.entries(LAYERS)) {
+  baseLayers[key] = L.tileLayer(source.template, {
+    maxZoom: source.maxZoom, maxNativeZoom: source.maxZoom, attribution: source.attribution,
+    subdomains: source.subdomains.length ? source.subdomains : 'abc'
+  });
+}
+const contourOverlay = L.tileLayer(LAYERS.topo.template, {
+  maxZoom: LAYERS.topo.maxZoom, maxNativeZoom: LAYERS.topo.maxZoom, opacity: 0.45,
+  attribution: LAYERS.topo.attribution, subdomains: LAYERS.topo.subdomains
+});
+let currentBase = LAYERS[prefs.base] ? prefs.base : 'osm';
+baseLayers[currentBase].addTo(map);
+if (prefs.contour) contourOverlay.addTo(map);
+
+function syncLayerUI() {
+  document.querySelectorAll('#layers button').forEach((button) => {
+    const on = button.dataset.layer === currentBase;
+    button.classList.toggle('on', on);
+    button.setAttribute('aria-pressed', String(on));
+  });
+  $('contourrow').classList.toggle('on', !!prefs.contour);
+  $('contourrow').setAttribute('aria-pressed', String(!!prefs.contour));
+}
+document.querySelectorAll('#layers button').forEach((button) => button.addEventListener('click', () => {
+  const key = button.dataset.layer;
+  if (!LAYERS[key] || key === currentBase) return;
+  map.removeLayer(baseLayers[currentBase]);
+  baseLayers[key].addTo(map);
+  currentBase = key;
+  prefs.base = key;
+  savePrefs(prefs);
+  syncLayerUI();
+}));
+$('contourrow').addEventListener('click', () => {
+  prefs.contour = !prefs.contour;
+  if (prefs.contour) contourOverlay.addTo(map); else map.removeLayer(contourOverlay);
+  savePrefs(prefs);
+  syncLayerUI();
+});
+syncLayerUI();
+
+// Keep the map drawn to its box as the panel opens, closes or the screen changes, and frame the program once.
+let framed = false;
 function refreshMap() {
-  if ($('pane-peta').hidden) return;
   map.invalidateSize({ pan: false });
-  if (!framedVisible && (state.points.length || positions.some((g) => g.last))) {
-    framedVisible = true;
+  if (!framed && (state.points.length || positions.some((g) => g.last))) {
+    framed = true;
     fitAll();
   }
 }
@@ -158,7 +201,8 @@ function fitAll() {
     .concat(positions.filter((g) => g.last).map((g) => [g.last.lat, g.last.lng]));
   if (!pts.length) return;
   fitted = true;
-  map.fitBounds(L.latLngBounds(pts).pad(0.15), { maxZoom: 15 });
+  // Leave room for the checkpoint card over the map's bottom edge and the button at top right.
+  map.fitBounds(L.latLngBounds(pts).pad(0.15), { maxZoom: 15, paddingTopLeft: [12, 12], paddingBottomRight: [56, 70] });
 }
 
 $('btnMFit').addEventListener('click', fitAll);
@@ -344,8 +388,10 @@ function renderCode(p) {
 
 function render() {
   const p = pointById(point);
-  $('pointname').textContent = p ? pointName(p) : 'Belum dipilih';
+  $('pointname').textContent = p ? pointName(p) : 'Checkpoint belum dipilih';
   $('btnPoint').textContent = p ? 'Tukar' : 'Pilih checkpoint';
+  $('mbadge').textContent = !p ? '?' : (isStart(p) ? 'M' : String(state.points.filter((x) => !isStart(x)).indexOf(p) + 1));
+  $('mbadge').classList.toggle('start', !!p && isStart(p));
   renderCode(p);
 
   const bits = [];
@@ -423,7 +469,7 @@ if ('serviceWorker' in navigator) {
 /* ── bottom tab bar: Tiba · Kod · Peta ──────────────────────────────── */
 
 mountTabs({
-  map, storageKey: 'jl_tab_marshal', defaultPane: 'tiba', collapsible: false,
+  map, storageKey: 'jl_tab_marshal2', defaultPane: 'tiba',
   onShow: () => setTimeout(refreshMap, 240),
   onViewport: () => setTimeout(refreshMap, 60)
 });

@@ -72,6 +72,8 @@ html.ios-standalone #app { position: absolute; }
    the credits above it, and the scale bar clear of the credits. */
 body:has(#strip) .leaflet-bottom.leaflet-right { bottom: 62px; }
 body:has(#strip) .leaflet-bottom.leaflet-left { bottom: 80px; }
+body:has(#mcard) .leaflet-bottom.leaflet-right { bottom: 56px; }
+body:has(#mcard) .leaflet-bottom.leaflet-left { bottom: 74px; }
 .leaflet-control-scale-line { border-radius: var(--radius-md); border-color: var(--jl-ink); }
 
 /* ── side buttons ────────────────────────────────────────────────────── */
@@ -480,12 +482,13 @@ body.sos-on #fabs { top: calc(140px + env(safe-area-inset-top)); }
 
 /* — checkpoint codes — */
 .acts.pad.top { padding-top: 12px; }
-/* The Kod tab has the pane to itself: a QR a phone can scan at arm's length and a code read from two metres. */
-#mcode .codebox { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 18px 14px 20px; text-align: center; }
-#mcode #mqr { flex: none; width: min(62vw, 260px); aspect-ratio: 1; background: #fff; border: 2px solid var(--jl-ink); padding: 6px; box-sizing: border-box; }
+/* The Kod pane: a QR a phone can scan at arm's length beside a code read from two metres. */
+#mcode .codebox { display: flex; align-items: center; gap: 14px; padding: 14px; }
+#mcode #mqr { flex: none; width: min(42vw, 190px); aspect-ratio: 1; background: #fff; border: 2px solid var(--jl-ink); padding: 5px; box-sizing: border-box; }
 #mcode #mqr svg { width: 100%; height: 100%; display: block; }
-#mcode .big { font-family: var(--font-heading); font-weight: 800; font-size: 44px; line-height: 1.05; letter-spacing: .16em; padding-left: .16em; }
-#mcode .desc { font-size: 12px; color: var(--jl-muted); max-width: 320px; }
+#mcode .side { min-width: 0; }
+#mcode .big { font-family: var(--font-heading); font-weight: 800; font-size: clamp(26px, 8.4vw, 40px); line-height: 1.05; letter-spacing: .12em; }
+#mcode .desc { font-size: 11.5px; color: var(--jl-muted); margin-top: 6px; }
 .codelist { display: flex; flex-direction: column; margin-top: 10px; }
 .coderow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--jl-rule); }
 .coderow .nm { font-weight: 600; color: var(--jl-ink); }
@@ -503,25 +506,31 @@ body.sos-on #fabs { top: calc(140px + env(safe-area-inset-top)); }
 #mmapwrap { position: relative; border-bottom: 2px solid var(--jl-ink); }
 #mmap { height: 40vh; min-height: 220px; background: var(--jl-map-bg); }
 #mmapwrap .fab { position: absolute; right: 10px; top: 10px; z-index: 1000; }
-#mposstat { padding: 0 14px 10px; }
-#mposstat.bad { color: var(--color-accent); font-weight: 700; }
 .jl-marker.mine { box-shadow: 0 0 0 3px var(--color-accent); }
 .marshal .row.grp.sos { background: var(--color-accent-100); }
 .marshal .row.grp.sos .badge.outline { background: var(--color-accent); border-color: var(--color-accent); color: var(--jl-on-ink); }
 
 /* — marshal page: a list, not a map — */
-/* Same frame as the map pages: the app is the screen's height (tabs.js sizes
-   it, iOS home-screen quirk included) and the list scrolls inside it, so the
-   last row and the home-indicator band are always reachable and painted. */
-body.page { overflow: hidden; }
-#app.marshal { background: var(--color-neutral-100); }
-#mbody { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-#mpanes { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; border-top: 2px solid var(--jl-rule); }
-#mpanes .pane { border-top: 0; }
-#pane-peta { height: 100%; }
-#pane-peta #mmapwrap { height: 100%; border-bottom: 0; }
-#pane-peta #mmap { height: 100%; min-height: 260px; }
-#mposstat:empty { display: none; }
+/* Same frame as the participant page: the map always on top, this phone's
+   checkpoint as an ink card over the map's bottom edge, a tabbed panel below. */
+#mcard {
+  position: absolute; left: 0; right: 0; bottom: 100%;
+  display: flex; align-items: center; gap: 12px;
+  min-height: 54px; padding: 7px 12px; box-sizing: border-box;
+  background: var(--jl-ink); color: var(--jl-on-ink);
+}
+#mcard .badge {
+  flex: none; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;
+  background: var(--jl-on-ink); color: var(--jl-ink); border: 3px solid var(--color-accent);
+  font-family: var(--font-heading); font-weight: 800; font-size: 17px; box-sizing: border-box;
+}
+#mcard .badge.start { background: var(--color-accent); color: var(--jl-on-ink); }
+#mcard .what { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+#mcard .tgt { font-family: var(--font-heading); font-weight: 800; font-size: 15px; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#mcard .sub { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--jl-muted-on-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#mcard .sub.bad { color: var(--color-accent-300); font-weight: 700; }
+#mcard .sub:empty { display: none; }
+#mcard .jl-btn { flex: none; }
 .mhead { display: flex; align-items: center; gap: 12px; padding: 14px; border-bottom: 2px solid var(--jl-rule); }
 .mhead .t { font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--jl-muted); }
 .mhead .v { font-family: var(--font-heading); font-weight: 800; font-size: 17px; }
