@@ -457,17 +457,23 @@ body.sos-on #fabs { top: calc(140px + env(safe-area-inset-top)); }
 .row.pos.sos { background: var(--color-accent-100); }
 .row.pos.sos .badge.outline { background: var(--color-accent); border-color: var(--color-accent); color: var(--jl-on-ink); }
 .row.pos.sel { box-shadow: inset 4px 0 0 var(--jl-ink); }
+/* Squares are places (MULA, checkpoints); rounds are people. A group is a
+   white round "K3" pill, so it can never be read as checkpoint 3. The pill
+   centres itself on the fix whatever its label's width. */
 .jl-grp {
-  display: flex; align-items: center; justify-content: center;
-  width: 30px; height: 30px;
-  background: var(--color-neutral-100); color: var(--jl-ink);
-  border: 2px solid var(--jl-ink);
-  font-family: var(--font-heading); font-weight: 800; font-size: 12px;
-  box-shadow: 0 1px 4px color-mix(in srgb, var(--color-neutral-900) 40%, transparent);
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 34px; height: 34px; padding: 0 7px; box-sizing: border-box;
+  background: #fff; color: var(--jl-ink);
+  border: 3px solid var(--jl-ink); border-radius: 17px;
+  font-family: var(--font-heading); font-weight: 800; font-size: 12.5px; letter-spacing: .02em; white-space: nowrap;
+  box-shadow: 0 1px 5px color-mix(in srgb, var(--color-neutral-900) 45%, transparent);
 }
-.jl-grp.warn { border-color: var(--color-accent-500); }
+.jl-grp.warn { border-color: var(--color-neutral-500); color: var(--color-neutral-700); }
 .jl-grp.bad { border-color: var(--color-accent); color: var(--color-accent); }
-.jl-grp.sos { background: var(--color-accent); border-color: var(--color-accent); color: var(--jl-on-ink); animation: jl-pulse 1.2s infinite; }
+.jl-grp.sos { background: var(--color-accent); border-color: #fff; color: #fff; animation: jl-pulse 1.2s infinite; }
+/* The same rule in the lists: a group's badge is round, a checkpoint's is square. */
+.row .badge.outline { border-radius: 50%; }
 
 /* ══ schedule, check-ins, marshal ════════════════════════════════════════ */
 

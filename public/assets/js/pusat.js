@@ -507,9 +507,9 @@ function nearestPoint(ll) {
 function groupIcon(label, cls) {
   return L.divIcon({
     className: '',
-    html: `<div class="jl-grp ${cls}">${label}</div>`,
-    iconSize: [30, 30],
-    iconAnchor: [15, 15]
+    html: `<div class="jl-grp ${cls}">K${label}</div>`,
+    iconSize: [0, 0],
+    iconAnchor: [0, 0]
   });
 }
 

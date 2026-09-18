@@ -172,9 +172,9 @@ function drawGroups() {
     const cls = (g.last.sos ? 'sos ' : '') + staleness(g.last);
     const icon = L.divIcon({
       className: '',
-      html: `<div class="jl-grp ${cls}">${groupLabel(g, i)}</div>`,
-      iconSize: [30, 30],
-      iconAnchor: [15, 15]
+      html: `<div class="jl-grp ${cls}">K${groupLabel(g, i)}</div>`,
+      iconSize: [0, 0],
+      iconAnchor: [0, 0]
     });
     const ll = [g.last.lat, g.last.lng];
     const here = pointById(point);
