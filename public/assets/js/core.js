@@ -40,7 +40,7 @@ export const LAYERS = {
     label: 'Satelit',
     template: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
     subdomains: [],
-    maxZoom: 19,
+    maxZoom: 18,   // Esri has no imagery past 18 over rural Malaysia; the map locks at the layer's cap
     attribution: 'Imagery © Esri, Maxar, Earthstar Geographics'
   }
 };
