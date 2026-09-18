@@ -70,8 +70,8 @@ html.ios-standalone #app { position: absolute; }
 .leaflet-control-attribution { font-size: 9.5px; border-radius: var(--radius-md); }
 /* The target card floats over the map's bottom edge; keep the scale bar and
    the credits above it, and the scale bar clear of the credits. */
-.leaflet-bottom.leaflet-right { bottom: 62px; }
-.leaflet-bottom.leaflet-left { bottom: 80px; }
+body:has(#strip) .leaflet-bottom.leaflet-right { bottom: 62px; }
+body:has(#strip) .leaflet-bottom.leaflet-left { bottom: 80px; }
 .leaflet-control-scale-line { border-radius: var(--radius-md); border-color: var(--jl-ink); }
 
 /* ── side buttons ────────────────────────────────────────────────────── */
@@ -370,7 +370,7 @@ html.ios-standalone #app { position: absolute; }
 
 /* ── toast ───────────────────────────────────────────────────────────── */
 #toast {
-  position: fixed; left: 14px; right: 14px; bottom: calc(14px + env(safe-area-inset-bottom));
+  position: fixed; left: 14px; right: 14px; bottom: calc(14px + max(env(safe-area-inset-bottom, 0px), var(--sab)));
   z-index: 2100; display: none;
   padding: 10px 14px;
   background: var(--jl-ink); color: var(--jl-on-ink);
@@ -509,9 +509,13 @@ body.sos-on #fabs { top: calc(140px + env(safe-area-inset-top)); }
 .marshal .row.grp.sos .badge.outline { background: var(--color-accent); border-color: var(--color-accent); color: var(--jl-on-ink); }
 
 /* — marshal page: a list, not a map — */
-body.page { overflow: auto; }
-#app.marshal { position: static; min-height: 100%; display: flex; flex-direction: column; background: var(--color-neutral-100); }
-#mbody { flex: 1; overflow-y: auto; }
+/* Same frame as the map pages: the app is the screen's height (tabs.js sizes
+   it, iOS home-screen quirk included) and the list scrolls inside it, so the
+   last row and the home-indicator band are always reachable and painted. */
+body.page { overflow: hidden; }
+#app.marshal { background: var(--color-neutral-100); }
+#mbody { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), var(--sab)); }
 .mhead { display: flex; align-items: center; gap: 12px; padding: 14px; border-bottom: 2px solid var(--jl-rule); }
 .mhead .t { font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--jl-muted); }
 .mhead .v { font-family: var(--font-heading); font-weight: 800; font-size: 17px; }

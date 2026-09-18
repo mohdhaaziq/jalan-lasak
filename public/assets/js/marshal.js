@@ -11,6 +11,7 @@ import { askText, askChoice, askConfirm, notify, toast } from './ui.js';
 import { LAYERS, isStart, groupLabel } from './core.js';
 import { distM, fmtDist } from './geo.js';
 import { scheduleFor, paceEstimate, paceLabel } from './schedule.js';
+import { watchViewport } from './tabs.js';
 
 const POSITIONS_POLL_MS = 30 * 1000;
 const STALE_WARN_MS = 10 * 60 * 1000;
@@ -68,6 +69,8 @@ const map = L.map('mmap', { zoomControl: false, attributionControl: true });
 map.attributionControl.setPrefix(false);
 L.tileLayer(LAYERS.osm.template, { maxZoom: LAYERS.osm.maxZoom, attribution: LAYERS.osm.attribution }).addTo(map);
 map.setView([3.556879, 101.632263], 12);   // MULA, until the program has loaded
+// Fill the whole screen (iOS home-screen quirk included) and keep the map drawn to its box.
+watchViewport(() => setTimeout(() => map.invalidateSize({ pan: false }), 60));
 
 const pointLayer = L.layerGroup().addTo(map);
 const routeLayer = L.layerGroup().addTo(map);

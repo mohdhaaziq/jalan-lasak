@@ -33,12 +33,18 @@ function fitViewport() {
   root.style.setProperty('--sab', sab + 'px');
 }
 
+/** Size the app to the real screen now and on every change. For any page, with or without tabs. */
+export function watchViewport(onChange) {
+  const run = () => { fitViewport(); if (onChange) onChange(); };
+  run();
+  window.addEventListener('resize', run);
+  window.addEventListener('orientationchange', () => setTimeout(run, 300));
+  window.addEventListener('pageshow', run);
+  setTimeout(run, 500);
+}
+
 export function mountTabs({ map, storageKey, defaultPane }) {
-  fitViewport();
-  window.addEventListener('resize', fitViewport);
-  window.addEventListener('orientationchange', () => setTimeout(fitViewport, 300));
-  window.addEventListener('pageshow', fitViewport);
-  setTimeout(fitViewport, 500);
+  watchViewport();
 
   const tabs = [...document.querySelectorAll('#tabbar [role="tab"]')];
   const sheet = $('sheet');
