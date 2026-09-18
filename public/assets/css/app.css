@@ -398,8 +398,7 @@ body:has(#tabbar) #toast { bottom: calc(54px + max(env(safe-area-inset-bottom, 0
 .acts.pad { padding: 4px 14px 14px; }
 #report { padding: 10px 14px 12px; border-bottom: 2px solid var(--jl-rule); }
 #report .acts { margin-top: 10px; }
-#report .check { padding: 10px 0 2px; min-height: 0; }
-#report .check .box { margin-top: 1px; }
+#wakestat { margin-top: 8px; color: var(--color-accent-700); text-transform: none; letter-spacing: 0; font-size: 11px; }
 .jl-btn.wide { width: 100%; justify-content: center; min-height: 44px; font-size: 11.5px; }
 /* The delivery line: a coloured square says it at a glance, the words say why. */
 .status { display: flex; align-items: center; gap: 8px; margin-top: 4px; font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase; color: var(--jl-muted); }

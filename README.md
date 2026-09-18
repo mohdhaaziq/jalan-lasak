@@ -129,8 +129,10 @@ Mesh Bluetooth antara telefon tidak mungkin dalam web app.
 Pelayar telefon **menggantung JavaScript bila skrin padam**. Web app tidak
 boleh menghantar GPS di latar belakang seperti app native. Oleh itu:
 
-1. Ketua kumpulan **mesti biarkan app terbuka** — gunakan butang
-   *Kekalkan skrin hidup* (Wake Lock; disokong Android Chrome dan iOS 16.4+).
+1. Ketua kumpulan **mesti biarkan app terbuka**. App peserta memegang
+   *screen wake lock* secara automatik selagi ia terbuka (disokong Android
+   Chrome dan iOS 16.4+); pada pelayar yang tidak menyokongnya, app meminta
+   Auto-Lock telefon ditetapkan kepada "Never".
 2. Pusat kawalan mesti menganggap kumpulan yang senyap > 20 minit sebagai
    *tidak diketahui*, bukan *selamat* — itulah sebabnya ia ditanda merah.
 3. Jika pelaporan latar belakang tanpa syarat diperlukan, jawapannya ialah
@@ -200,9 +202,9 @@ mesti diuji di lokasi sebelum program.
 5. Setiap marshal buka `/marshal.html` di telefonnya semasa ada talian,
    masukkan PIN, pilih checkpoint-nya.
 6. Setiap ketua kumpulan buka `/` di telefonnya semasa masih ada talian,
-   masuk dengan PIN kumpulannya, tekan **Simpan kawasan ini** untuk peta offline
-   (seluruh kawasan program, zum paling dalam yang muat dalam ± 70 MB), dan
-   **Kekalkan skrin hidup**. Tambah ke skrin utama (*Add to Home Screen*).
+   masuk dengan PIN kumpulannya dan tekan **Simpan kawasan ini** untuk peta offline
+   (seluruh kawasan program, zum paling dalam yang muat dalam ± 70 MB). Skrin
+   kekal hidup sendiri selagi app terbuka. Tambah ke skrin utama (*Add to Home Screen*).
 7. Bila kumpulan bertolak: marshal di MULA tekan *Tiba* untuk kumpulan itu
    (mula jam kumpulan), atau pusat kawalan tekan *Mula* / *Mula semua*.
 
@@ -275,7 +277,7 @@ Melayu dan dipaparkan terus dalam app.
 
 | Cache | Isi | Dibuang bila |
 | --- | --- | --- |
-| `jl-shell-v27` | fail app + salinan terakhir `/api/state` | versi baharu digunakan |
+| `jl-shell-v28` | fail app + salinan terakhir `/api/state` | versi baharu digunakan |
 | `jl-tiles-v1` | tile yang **sengaja** disimpan | hanya melalui butang *Kosongkan* |
 | `jl-tiles-auto-v1` | tile yang terpapar semasa melayari | automatik, melebihi 1500 tile |
 

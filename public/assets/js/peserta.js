@@ -483,50 +483,37 @@ btnSOS.addEventListener('click', async () => {
 
 mountTabs({ map: core.map, storageKey: 'jl_tab_peserta', defaultPane: 'kumpulan' });
 
-/* ── keep the screen on ─────────────────────────────────────────────── */
+/* ── keep the screen on: automatic, for as long as the app is open ──── */
 
-const btnWake = $('btnWake');
+// A dark screen suspends the page and with it the position reports, so the
+// app holds a screen wake lock by itself: on launch, again whenever it comes
+// back to the front (the lock is released when the page is hidden), and on the
+// first tap in case the browser wants a gesture. Nothing to switch on or off.
 let wakeLock = null;
-let wantWake = false;
+let wakeWarned = false;
 
-async function acquireWake() {
+async function holdWake() {
+  if (wakeLock || document.visibilityState !== 'visible') return;
+  const note = $('wakestat');
   if (!('wakeLock' in navigator)) {
-    notify({ title: 'Tidak disokong', body: 'Pelayar ini tidak boleh kekalkan skrin hidup. Tetapkan sendiri dalam tetapan telefon.' });
-    return false;
+    note.hidden = false;
+    note.textContent = 'Pelayar ini tidak boleh kekalkan skrin hidup — tetapkan Auto-Lock telefon kepada "Never" semasa program.';
+    if (!wakeWarned) {
+      wakeWarned = true;
+      toast('Skrin boleh padam sendiri pada pelayar ini — tetapkan Auto-Lock kepada Never.', 7000);
+    }
+    return;
   }
   try {
     wakeLock = await navigator.wakeLock.request('screen');
-    wakeLock.addEventListener('release', () => { wakeLock = null; syncWake(); });
-    return true;
-  } catch {
-    return false;
-  }
+    note.hidden = true;
+    wakeLock.addEventListener('release', () => { wakeLock = null; });
+  } catch { /* not allowed right now (battery saver, no gesture yet): the next tap or return retries */ }
 }
 
-function syncWake() {
-  const on = !!wakeLock;
-  btnWake.classList.toggle('on', on);
-  btnWake.setAttribute('aria-pressed', String(on));
-}
-
-btnWake.addEventListener('click', async () => {
-  if (wakeLock) {
-    wantWake = false;
-    await wakeLock.release();
-    wakeLock = null;
-  } else {
-    wantWake = await acquireWake();
-  }
-  syncWake();
-});
-
-document.addEventListener('visibilitychange', async () => {
-  if (document.visibilityState === 'visible' && wantWake && !wakeLock) {
-    await acquireWake();
-    syncWake();
-  }
-});
-syncWake();
+holdWake();
+document.addEventListener('visibilitychange', holdWake);
+document.addEventListener('click', holdWake);
 
 /* ── init ───────────────────────────────────────────────────────────── */
 
