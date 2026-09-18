@@ -68,10 +68,10 @@ html.ios-standalone #app { position: absolute; }
 #map { flex: 1; min-height: 0; background: var(--jl-map-bg); }
 .leaflet-container { font-family: var(--font-body); background: var(--jl-map-bg); }
 .leaflet-control-attribution { font-size: 9.5px; border-radius: var(--radius-md); }
-/* The compass strip floats over the map's bottom edge; keep the scale bar and
+/* The target card floats over the map's bottom edge; keep the scale bar and
    the credits above it, and the scale bar clear of the credits. */
-.leaflet-bottom.leaflet-right { bottom: 36px; }
-.leaflet-bottom.leaflet-left { bottom: 54px; }
+.leaflet-bottom.leaflet-right { bottom: 62px; }
+.leaflet-bottom.leaflet-left { bottom: 80px; }
 .leaflet-control-scale-line { border-radius: var(--radius-md); border-color: var(--jl-ink); }
 
 /* ── side buttons ────────────────────────────────────────────────────── */
@@ -199,22 +199,32 @@ html.ios-standalone #app { position: absolute; }
 #tabbar [role="tab"]:focus-visible { outline: 3px solid var(--color-accent); outline-offset: -3px; }
 
 /* ── compass strip ───────────────────────────────────────────────────── */
-/* One line over the map's bottom edge: arrow, target, distance, bearing.
-   It costs the map nothing in height. */
+/* The target card, the way navigation apps show the next waypoint: a big
+   arrow that turns with the phone, the name, the distance as the largest
+   number on screen, the bearing beside it. It floats over the map's bottom
+   edge and costs the map nothing in height; tapping it frames the target. */
 #strip {
   position: absolute; left: 0; right: 0; bottom: 100%;
-  display: flex; align-items: center; gap: 10px;
-  min-height: 36px; padding: 4px 12px; box-sizing: border-box;
+  display: flex; align-items: center; gap: 12px;
+  min-height: 60px; padding: 8px 12px; box-sizing: border-box; width: 100%; text-align: left;
   background: var(--jl-ink); color: var(--jl-on-ink);
+  border: 0; border-top: 2px solid var(--jl-ink); border-radius: var(--radius-md);
+  font-family: inherit; cursor: pointer;
 }
-#strip .arrow { width: 24px; height: 24px; flex: none; display: flex; align-items: center; justify-content: center; }
-#strip .arrow svg { width: 20px; height: 20px; transition: transform .3s; }
-#strip > div:not(.arrow):not(.brg) { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px; }
-#strip .tgt { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--jl-muted-on-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-#strip .val { font-family: var(--font-heading); font-weight: 800; font-size: 14px; white-space: nowrap; }
-#strip .brg { flex: none; }
-#strip .brg .tgt { display: none; }
-#strip .brg .val { color: var(--color-accent-300); }
+#strip:focus-visible { outline: 3px solid var(--color-accent); outline-offset: -3px; }
+#strip .arrow {
+  flex: none; width: 44px; height: 44px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--color-accent); color: var(--jl-on-ink);
+}
+#strip .arrow svg { width: 28px; height: 28px; transition: transform .3s ease-out; }
+#strip .what { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+#strip .what .tgt { font-size: 12px; font-weight: 600; letter-spacing: .01em; color: var(--jl-on-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-transform: none; }
+#strip .what .val { font-family: var(--font-heading); font-weight: 800; font-size: 22px; line-height: 1.1; white-space: nowrap; }
+#strip .brg { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 1px; }
+#strip .brg .val { font-family: var(--font-heading); font-weight: 800; font-size: 18px; line-height: 1.1; color: var(--color-accent-300); }
+#strip .brg .tgt { font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--jl-muted-on-ink); white-space: nowrap; }
+@media (prefers-reduced-motion: reduce) { #strip .arrow svg { transition: none; } }
 
 /* ── rows ────────────────────────────────────────────────────────────── */
 .row {

@@ -6,6 +6,12 @@
    only for the command centre. */
 
 import { distM, bearing, fmtDist, pathKm } from './geo.js';
+
+/** Compass point in Malay for a bearing: 351° → "Barat Laut". */
+function cardinal(deg) {
+  const names = ['Utara', 'Timur Laut', 'Timur', 'Tenggara', 'Selatan', 'Barat Daya', 'Barat', 'Barat Laut'];
+  return names[Math.round((((deg % 360) + 360) % 360) / 45) % 8];
+}
 import { DEFAULT_POINTS, loadState, saveState, loadTarget, saveTarget, loadPrefs, savePrefs } from './store.js';
 import { notify, toast, askConfirm } from './ui.js';
 import { planTiles, precacheTiles, cachedTileCount, clearTiles, approxSize, deepestZoom } from './offline.js';
@@ -278,29 +284,41 @@ export function boot({ editable = false } = {}) {
     renderPointList();
   }
 
+  $('strip').addEventListener('click', () => {
+    const target = findPoint(targetId);
+    if (!target) return;
+    if (myPos) map.fitBounds(L.latLngBounds([myPos, target]).pad(0.35), { maxZoom: 16 });
+    else map.setView([target.lat, target.lng], Math.max(map.getZoom(), 15));
+    if (markers[target.id]) markers[target.id].openPopup();
+  });
+
   function updateStrip() {
     const target = findPoint(targetId);
     const nameEl = $('tgtname');
     const distEl = $('tgtdist');
     const brgEl = $('tgtbrg');
 
+    const cardEl = $('tgtcard');
     if (!target) {
-      nameEl.textContent = '—';
+      nameEl.textContent = 'Tiada sasaran';
       distEl.textContent = '— km';
       brgEl.textContent = '—°';
+      if (cardEl) cardEl.textContent = '';
       return;
     }
     nameEl.textContent = target.name;
 
     const origin = myPos || startPoint();
     if (!origin || origin === target) {
-      distEl.textContent = myPos ? '0 m' : '— km';
+      distEl.textContent = myPos ? 'Anda di sini' : '— km';
       brgEl.textContent = '—°';
+      if (cardEl) cardEl.textContent = '';
       return;
     }
-    distEl.textContent = fmtDist(distM(origin, target)) + (myPos ? '' : ' (dari MULA)');
+    distEl.textContent = fmtDist(distM(origin, target)) + (myPos ? '' : ' dari MULA');
     const brg = bearing(origin, target);
     brgEl.textContent = Math.round(brg) + '°';
+    if (cardEl) cardEl.textContent = cardinal(brg);
     const rotation = deviceHeading === null ? brg : brg - deviceHeading;
     $('arrowsvg').style.transform = `rotate(${rotation}deg)`;
   }

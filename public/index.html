@@ -47,17 +47,17 @@
   </div>
 
   <section id="sheet" class="open">
-    <div id="strip">
-      <div class="arrow"><svg id="arrowsvg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2 L18 20 L12 16 L6 20 Z"/></svg></div>
-      <div>
-        <div class="tgt" id="tgtname">Sasaran: —</div>
-        <div class="val" id="tgtdist">— km</div>
-      </div>
-      <div class="brg">
-        <div class="tgt">Bearing</div>
-        <div class="val" id="tgtbrg">—°</div>
-      </div>
-    </div>
+    <button type="button" id="strip" aria-label="Sasaran seterusnya: zum ke peta">
+      <span class="arrow" aria-hidden="true"><svg id="arrowsvg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 L18 20 L12 16 L6 20 Z"/></svg></span>
+      <span class="what">
+        <span class="tgt" id="tgtname">—</span>
+        <span class="val" id="tgtdist">— km</span>
+      </span>
+      <span class="brg">
+        <span class="val" id="tgtbrg">—°</span>
+        <span class="tgt" id="tgtcard"></span>
+      </span>
+    </button>
 
     <!-- One pane shows at a time; the tab bar below picks it. -->
     <div id="panes">
