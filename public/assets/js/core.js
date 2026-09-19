@@ -307,6 +307,7 @@ export function boot({ editable = false } = {}) {
       distEl.textContent = '— km';
       brgEl.textContent = '—°';
       if (cardEl) cardEl.textContent = '';
+      aimArrow(NaN);
       return;
     }
     nameEl.textContent = target.name;
@@ -324,8 +325,38 @@ export function boot({ editable = false } = {}) {
     const brg = bearing(origin, target);
     brgEl.textContent = Math.round(brg) + '°';
     if (cardEl) cardEl.textContent = cardinal(brg);
-    const rotation = deviceHeading === null ? brg : brg - deviceHeading;
-    $('arrowsvg').style.transform = `rotate(${rotation}deg)`;
+    aimArrow(brg);
+  }
+
+  /**
+   * Turn the card's arrow towards a bearing. With a compass the arrow is
+   * relative to where the phone points, so it swings as the phone turns and
+   * stands straight up when the phone faces the target; the tile then lights
+   * up (and the phone ticks once) to say "that way". Without a compass the
+   * arrow is simply the bearing on a north-up map.
+   */
+  let wasAimed = false;
+  let shownAngle = 0;
+  function aimArrow(brg) {
+    const tile = document.querySelector('#strip .arrow');
+    if (!Number.isFinite(brg)) {
+      if (tile) tile.classList.remove('aimed', 'live');
+      wasAimed = false;
+      return;
+    }
+    const live = deviceHeading !== null;
+    const relative = live ? brg - deviceHeading : brg;
+    // Turn the short way round: 179° → −179° is a 2° nudge, not a full spin.
+    shownAngle += ((relative - shownAngle) % 360 + 540) % 360 - 180;
+    $('arrowsvg').style.transform = `rotate(${shownAngle}deg)`;
+    const off = Math.abs(((relative % 360) + 540) % 360 - 180);   // 0° when dead ahead
+    const aimed = live && off <= 12;
+    if (tile) {
+      tile.classList.toggle('live', live);
+      tile.classList.toggle('aimed', aimed);
+    }
+    if (aimed && !wasAimed && navigator.vibrate) navigator.vibrate(25);
+    wasAimed = aimed;
   }
 
   /* ── GPS ────────────────────────────────────────────────────────────── */
@@ -762,6 +793,7 @@ export function boot({ editable = false } = {}) {
     myPos: () => myPos,
     setMyPos,
     setCourse: (deg) => { gpsCourse = Number.isFinite(deg) ? deg : null; updateBeam(); },
+    aimArrow,
     changed,
     applyState,
     setScheduleStart: (ms) => { scheduleStart = Number.isFinite(ms) ? ms : null; renderPointList(); },

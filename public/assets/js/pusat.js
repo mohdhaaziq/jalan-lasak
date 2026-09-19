@@ -734,13 +734,14 @@ core.hooks.strip = () => {
     $('tgtdist').textContent = '— km';
     $('tgtbrg').textContent = '—°';
     $('tgtcard').textContent = '';
+    core.aimArrow(NaN);
     return true;
   }
   const brg = bearing(origin.pos, g.last);
   $('tgtdist').textContent = fmtDist(distM(origin.pos, g.last));
   $('tgtbrg').textContent = Math.round(brg) + '°';
   $('tgtcard').textContent = cardinal(brg);
-  $('arrowsvg').style.transform = `rotate(${brg}deg)`;
+  core.aimArrow(brg);   // follows the phone: straight up, and lit, when it faces the group
   return true;
 };
 core.hooks.stripClick = () => {
