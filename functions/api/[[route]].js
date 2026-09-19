@@ -37,6 +37,7 @@
      PUT  /api/settings           { smsNumber?, marshalPin? } → { version }       CC
      POST /api/positions          { group, pin, device, items[] } → { version, saved, revealed }   group PIN or CC
      GET  /api/positions[?trail=N]  latest fix, check-ins and start per group     CC or marshal PIN (PINs only for CC)
+     GET  /api/track?group=ID[&since=ms]  every stored fix of one group, oldest first   CC
      POST /api/checkins           { device, items:[{group, point, at?, note?}] }  CC or marshal PIN
                                   { device, items:[{point, code, at?}] }         X-Group-Pin (source 'qr')
 */
@@ -49,6 +50,7 @@ const DEFAULT_POINTS = [
 
 const MAX_BATCH = 200;      // positions or check-ins accepted in one POST
 const MAX_TRAIL = 200;      // per-group trail points returned
+const MAX_TRACK = 6000;     // fixes in one full-track answer: > 8 h at one a minute, several times over
 const MAX_NAME = 120;
 const MAX_NOTE = 200;
 const CLOCK_SLACK_MS = 7 * 24 * 3600 * 1000;
@@ -595,6 +597,33 @@ async function getPositions(request, env, url) {
   return json({ now: Date.now(), groups });
 }
 
+/**
+ * One group's whole recorded track, oldest first, for the full-route view and
+ * the GPX / CSV export. Fixes are never deleted during an event, so this is
+ * everything the phone managed to deliver, offline queue included.
+ */
+async function getTrack(request, env, url) {
+  requireCC(request, env);
+  const id = url.searchParams.get('group');
+  if (!isId(id)) throw new HttpError(400, 'Perlukan group.');
+  const db = env.DB;
+  const g = await db.prepare('SELECT id, name, started_at FROM groups WHERE id = ?').bind(id).first();
+  if (!g) throw new HttpError(404, 'Kumpulan tidak wujud lagi.');
+  const since = Math.max(0, parseInt(url.searchParams.get('since') || '0', 10) || 0);
+  const [fixes, checkins] = await Promise.all([
+    db.prepare(`SELECT lat, lng, acc, battery, sos, source, recorded_at FROM positions
+                WHERE group_id = ? AND recorded_at >= ? ORDER BY recorded_at, id LIMIT ?`).bind(id, since, MAX_TRACK).all(),
+    db.prepare('SELECT point_id, source, recorded_at FROM checkins WHERE group_id = ? ORDER BY recorded_at').bind(id).all()
+  ]);
+  return json({
+    group: { id: g.id, name: g.name, startedAt: g.started_at },
+    // [lat, lng, at, sos, acc, battery, source]
+    fixes: fixes.results.map((r) => [r.lat, r.lng, r.recorded_at, r.sos ? 1 : 0, r.acc, r.battery, r.source]),
+    checkins: checkins.results.map((c) => ({ point: c.point_id, source: c.source, at: c.recorded_at })),
+    truncated: fixes.results.length >= MAX_TRACK
+  });
+}
+
 /* ── check-ins ────────────────────────────────────────────────────────── */
 
 async function postCheckins(request, env) {
@@ -673,6 +702,7 @@ export async function onRequest({ request, env }) {
     if (route === 'settings' && method === 'PUT') return await putSettings(request, env);
     if (route === 'positions' && method === 'POST') return await postPositions(request, env);
     if (route === 'positions' && method === 'GET') return await getPositions(request, env, url);
+    if (route === 'track' && method === 'GET') return await getTrack(request, env, url);
     if (route === 'checkins' && method === 'POST') return await postCheckins(request, env);
     if (route === 'ping') return json({ ok: true, now: Date.now() });
 

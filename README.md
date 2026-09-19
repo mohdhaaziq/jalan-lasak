@@ -265,6 +265,7 @@ design/                 bundle serahan Claude Design (rujukan)
 | PUT | `/api/settings` | kunci | nombor SMS, PIN marshal |
 | POST | `/api/positions` | telefon (PIN kumpulan) atau kunci | hantar sekumpulan kedudukan (`source: 'sms'` untuk yang ditaip); pulang `revealed` = bilangan titik yang kumpulan itu boleh lihat |
 | GET | `/api/positions?trail=N` | kunci **atau** PIN | kedudukan terkini, daftar masuk dan masa mula setiap kumpulan + N jejak; PIN kumpulan hanya untuk kunci |
+| GET | `/api/track?group=ID` | kunci | semua kedudukan yang dirakam untuk satu kumpulan, dari awal (jejak penuh, eksport GPX / CSV) |
 | POST | `/api/checkins` | kunci, PIN marshal, **atau** PIN kumpulan + kod titik | catat kumpulan tiba di titik; tiba di MULA memulakan jam kumpulan |
 
 Kunci dihantar sebagai `Authorization: Bearer <CC_KEY>`; PIN marshal sebagai
@@ -277,7 +278,7 @@ Melayu dan dipaparkan terus dalam app.
 
 | Cache | Isi | Dibuang bila |
 | --- | --- | --- |
-| `jl-shell-v35` | fail app + salinan terakhir `/api/state` | versi baharu digunakan |
+| `jl-shell-v36` | fail app + salinan terakhir `/api/state` | versi baharu digunakan |
 | `jl-tiles-v1` | tile yang **sengaja** disimpan | hanya melalui butang *Kosongkan* |
 | `jl-tiles-auto-v1` | tile yang terpapar semasa melayari | automatik, melebihi 1500 tile |
 

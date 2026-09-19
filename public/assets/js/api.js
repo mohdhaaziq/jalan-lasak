@@ -74,6 +74,10 @@ export const loginGroup = (pin) =>
 export const getPositions = (key, trail = 0, { pin } = {}) =>
   call('positions' + (trail ? `?trail=${trail}` : ''), { key, pin });
 
+/** Command centre: every stored fix of one group, oldest first, optionally since a time (ms). */
+export const getTrack = (key, group, since = 0) =>
+  call('track?group=' + encodeURIComponent(group) + (since ? '&since=' + since : ''), { key });
+
 /** Command centre: the SMS fallback number and/or the marshal PIN. */
 export const putSettings = (key, settings) =>
   call('settings', { method: 'PUT', key, body: settings });

@@ -5,7 +5,7 @@
 
 import { boot, $, el, isStart, groupLabel, cardinal } from './core.js';
 import { mountEditing } from './edit.js';
-import { getState, putState, putGroups, putSettings, getPositions, postPositions, postCheckins } from './api.js';
+import { getState, putState, putGroups, putSettings, getPositions, postPositions, postCheckins, getTrack } from './api.js';
 import { loadCCKey, saveCCKey, saveState } from './store.js';
 import { askText, askChoice, askConfirm, notify, toast } from './ui.js';
 import { distM, fmtDist, bearing } from './geo.js';
@@ -657,8 +657,13 @@ const TRAIL_GAP_MS = 20 * 60 * 1000;          // a silence this long breaks the 
 const TRAIL_JUMP_M = 1500;                    // … and so does a jump this far: the phone was off, not flying
 const TRAIL_COLOR = '#2a78d6';                // GPS blue: where they have been (red is the planned route)
 
+let trailMode = 'recent';   // 'recent': the last two hours from the live feed · 'full': everything since the group set off
+let fullTrack = null;       // { id, fixes, fetchedFor } — the selected group's whole track, fetched on demand
+
 function clearSelection() {
   selectedGroup = null;
+  trailMode = 'recent';
+  fullTrack = null;
   if (trailLine) map.removeLayer(trailLine);
   trailLine = null;
   $('selchip').hidden = true;
@@ -666,25 +671,173 @@ function clearSelection() {
   renderPositions();
 }
 
+/** Split fixes into walked segments: a long silence or a big jump is a gap, not a walk. */
+function segmentsOf(fixes) {
+  const segments = [];
+  let segment = [];
+  fixes.forEach((t, i) => {
+    const prev = fixes[i - 1];
+    if (prev && (t[2] - prev[2] > TRAIL_GAP_MS || distM({ lat: prev[0], lng: prev[1] }, { lat: t[0], lng: t[1] }) > TRAIL_JUMP_M)) {
+      segments.push(segment);
+      segment = [];
+    }
+    segment.push(t);
+  });
+  segments.push(segment);
+  return segments.filter((seg) => seg.length);
+}
+
+const walkedM = (segments) => segments.reduce((sum, seg) =>
+  sum + seg.slice(1).reduce((d, t, i) => d + distM({ lat: seg[i][0], lng: seg[i][1] }, { lat: t[0], lng: t[1] }), 0), 0);
+
+/** The fixes to show for the selected group in the current mode. */
+function trailFixes(g) {
+  if (trailMode === 'full' && fullTrack && fullTrack.id === g.id) {
+    const from = Number.isFinite(g.startedAt) ? g.startedAt : 0;
+    return fullTrack.fixes.filter((t) => t[2] >= from);
+  }
+  const since = (g.last ? g.last.at : serverNow) - TRAIL_WINDOW_MS;
+  return g.trail.filter((t) => t[2] >= since);
+}
+
 function drawTrail(g) {
   if (trailLine) map.removeLayer(trailLine);
   trailLine = L.layerGroup().addTo(map);
-  const since = (g.last ? g.last.at : serverNow) - TRAIL_WINDOW_MS;
-  const fixes = g.trail.filter((t) => t[2] >= since);
-  let segment = [];
-  const flush = () => {
-    if (segment.length > 1) L.polyline(segment, { color: TRAIL_COLOR, weight: 4, opacity: 0.85, interactive: false }).addTo(trailLine);
-    segment = [];
-  };
-  fixes.forEach((t, i) => {
-    const prev = fixes[i - 1];
-    if (prev && (t[2] - prev[2] > TRAIL_GAP_MS || distM({ lat: prev[0], lng: prev[1] }, { lat: t[0], lng: t[1] }) > TRAIL_JUMP_M)) flush();
-    segment.push([t[0], t[1]]);
-    L.circleMarker([t[0], t[1]], { radius: 3, color: '#fff', weight: 1, fillColor: TRAIL_COLOR, fillOpacity: 1, interactive: false }).addTo(trailLine);
+  const fixes = trailFixes(g);
+  const segments = segmentsOf(fixes);
+  const full = trailMode === 'full';
+  for (const seg of segments) {
+    if (seg.length > 1) L.polyline(seg.map((t) => [t[0], t[1]]), { color: TRAIL_COLOR, weight: 4, opacity: 0.85, interactive: false }).addTo(trailLine);
+  }
+  // A dot per fix when there are few; on a whole day's track, only where something happened.
+  fixes.forEach((t) => {
+    if (full && fixes.length > 120 && !t[3]) return;
+    L.circleMarker([t[0], t[1]], {
+      radius: t[3] ? 5 : 3, color: '#fff', weight: 1, fillColor: t[3] ? '#ec3013' : TRAIL_COLOR, fillOpacity: 1, interactive: false
+    }).addTo(trailLine);
   });
-  flush();
+  if (full && fixes.length) {
+    // Where they were on the half hour, so the line can be read as a timeline.
+    const step = 30 * 60 * 1000;
+    let next = Math.ceil(fixes[0][2] / step) * step;
+    const label = (t, text, cls) => L.marker([t[0], t[1]], {
+      interactive: false, keyboard: false,
+      icon: L.divIcon({ className: '', html: `<div class="jl-tick ${cls || ''}">${text}</div>`, iconSize: [0, 0], iconAnchor: [0, 0] })
+    }).addTo(trailLine);
+    label(fixes[0], 'mula ' + clock(fixes[0][2]), 'start');
+    for (const t of fixes) {
+      if (t[2] >= next) {
+        label(t, clock(t[2]));
+        next = Math.ceil((t[2] + 1) / step) * step;
+      }
+    }
+  }
+  const index = positions.indexOf(g);
+  const km = walkedM(segments);
+  $('selchiptext').textContent = 'Jejak K' + groupLabel(g, index) + ' · ' +
+    (full ? (Number.isFinite(g.startedAt) ? 'sejak bertolak ' + clock(g.startedAt) : 'semua rakaman') : '2 jam terakhir') +
+    ' · ' + fmtDist(km) + ' · ' + fixes.length + ' titik';
+  $('btnTrailMode').textContent = full ? '2 jam' : 'Jejak penuh';
   return fixes;
 }
+
+async function loadFullTrack(g) {
+  const data = await withKey(() => getTrack(key, g.id));
+  fullTrack = { id: g.id, fixes: data.fixes, lastAt: g.last ? g.last.at : 0, checkins: data.checkins, truncated: data.truncated };
+  return fullTrack;
+}
+
+$('btnTrailMode').addEventListener('click', async () => {
+  const g = selectedGroup && positions.find((x) => x.id === selectedGroup);
+  if (!g) return;
+  if (trailMode === 'full') {
+    trailMode = 'recent';
+    drawTrail(g);
+    return;
+  }
+  try {
+    toast('Memuatkan jejak penuh…');
+    await loadFullTrack(g);
+    trailMode = 'full';
+    const fixes = drawTrail(g);
+    if (fixes.length) map.fitBounds(L.latLngBounds(fixes.map((t) => [t[0], t[1]])).pad(0.2), { maxZoom: 16, paddingBottomRight: [56, 70], paddingTopLeft: [12, 60] });
+    if (fullTrack.truncated) toast('Jejak sangat panjang: hanya 6000 titik pertama dipaparkan.', 6000);
+  } catch (err) {
+    notify({ title: 'Gagal muat jejak', body: err.message });
+  }
+});
+
+/* — export: the whole recorded track as GPX (maps, Garmin, Strava) or CSV (spreadsheet) — */
+
+const xml = (v) => String(v).replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
+
+function buildGpx(g, track) {
+  const iso = (ms) => new Date(ms).toISOString();
+  const wpts = state.points.map((pt) =>
+    `  <wpt lat="${pt.lat}" lon="${pt.lng}"><name>${xml(pointName(pt))}</name><type>checkpoint</type></wpt>`);
+  for (const t of track.fixes) if (t[3]) wpts.push(`  <wpt lat="${t[0]}" lon="${t[1]}"><time>${iso(t[2])}</time><name>SOS ${xml(clock(t[2]))}</name><type>sos</type></wpt>`);
+  const segs = segmentsOf(track.fixes).map((seg) => '    <trkseg>\n' + seg.map((t) =>
+    `      <trkpt lat="${t[0]}" lon="${t[1]}"><time>${iso(t[2])}</time>${Number.isFinite(t[4]) ? `<hdop>${(t[4] / 5).toFixed(1)}</hdop>` : ''}</trkpt>`).join('\n') + '\n    </trkseg>');
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="Jalan Lasak" xmlns="http://www.topografix.com/GPX/1/1">
+  <metadata><name>${xml(g.name)} — Jalan Lasak</name><time>${iso(Date.now())}</time></metadata>
+${wpts.join('\n')}
+  <trk>
+    <name>${xml(g.name)}</name>
+${segs.join('\n')}
+  </trk>
+</gpx>
+`;
+}
+
+function buildCsv(g, track) {
+  const rows = ['kumpulan,masa_iso,masa_tempatan,lat,lng,ketepatan_m,bateri,sos,sumber'];
+  for (const t of track.fixes) {
+    rows.push([JSON.stringify(g.name), new Date(t[2]).toISOString(), JSON.stringify(new Date(t[2]).toLocaleString('ms-MY')),
+      t[0], t[1], t[4] ?? '', t[5] ?? '', t[3] ? 1 : 0, t[6] || 'app'].join(','));
+  }
+  return rows.join('\n') + '\n';
+}
+
+function download(name, text, type) {
+  const url = URL.createObjectURL(new Blob([text], { type }));
+  const a = el('a');
+  a.href = url;
+  a.download = name;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 30000);
+}
+
+$('btnExport').addEventListener('click', async () => {
+  const g = selectedGroup && positions.find((x) => x.id === selectedGroup);
+  if (!g) return;
+  const kind = await askChoice({
+    title: 'Eksport jejak — ' + g.name,
+    body: 'Semua kedudukan yang dirakam untuk kumpulan ini, termasuk yang dihantar lewat dari giliran offline.',
+    options: [
+      { value: 'gpx', label: 'GPX — untuk peta, Garmin, Google Earth' },
+      { value: 'csv', label: 'CSV — untuk Excel / laporan' }
+    ],
+    cancelLabel: 'Batal'
+  });
+  if (!kind) return;
+  try {
+    const track = await loadFullTrack(g);
+    if (!track.fixes.length) {
+      notify({ title: 'Tiada rakaman', body: 'Belum ada kedudukan dirakam untuk kumpulan ini.' });
+      return;
+    }
+    const stamp = new Date().toISOString().slice(0, 10);
+    const base = 'jalan-lasak-' + g.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '-' + stamp;
+    if (kind === 'gpx') download(base + '.gpx', buildGpx(g, track), 'application/gpx+xml');
+    else download(base + '.csv', buildCsv(g, track), 'text/csv');
+    toast(track.fixes.length + ' titik dieksport.');
+  } catch (err) {
+    notify({ title: 'Gagal eksport', body: err.message });
+  }
+});
 
 /** Where distances to a group are measured from: this device if it knows where it is, otherwise MULA. */
 function ccOrigin() {
@@ -704,13 +857,13 @@ function selectGroup(id) {
   if (!g || !g.last) return;
   core.releaseFollow();               // looking at a group now: the locate button must not pull the map back
   selectedGroup = id;
+  trailMode = 'recent';
+  fullTrack = null;
   const fixes = drawTrail(g);
   const origin = ccOrigin();
   const pts = fixes.map((t) => [t[0], t[1]]).concat([[g.last.lat, g.last.lng]]);
   if (origin) pts.push([origin.pos.lat, origin.pos.lng]);
   map.fitBounds(L.latLngBounds(pts).pad(0.25), { maxZoom: 16, paddingBottomRight: [56, 70], paddingTopLeft: [12, 40] });
-  const index = positions.indexOf(g);
-  $('selchiptext').textContent = 'Jejak K' + groupLabel(g, index) + ' · 2 jam terakhir (garis biru)';
   $('selchip').hidden = false;
   if (!core.myPos() && !hintedLocate) {
     hintedLocate = true;
@@ -881,7 +1034,12 @@ async function pollPositions() {
     if (pinsChanged) renderGroups();
     $('posstat').textContent = 'Dikemas kini ' + clock(Date.now());
     const sel = selectedGroup && positions.find((x) => x.id === selectedGroup);
-    if (sel && sel.last) drawTrail(sel); else if (selectedGroup) clearSelection();
+    if (sel && sel.last) {
+      if (trailMode === 'full' && fullTrack && fullTrack.lastAt !== sel.last.at) {
+        loadFullTrack(sel).then(() => { if (selectedGroup === sel.id) drawTrail(sel); }).catch(() => {});
+      }
+      drawTrail(sel);
+    } else if (selectedGroup) clearSelection();
     core.updateStrip();
     renderPositions();
   } catch (err) {

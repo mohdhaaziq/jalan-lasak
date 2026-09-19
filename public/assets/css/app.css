@@ -455,7 +455,14 @@ body:has(#tabbar) #toast { bottom: calc(54px + max(env(safe-area-inset-bottom, 0
   padding: 5px 6px 5px 10px; background: var(--jl-ink); color: var(--jl-on-ink);
   border-left: 4px solid var(--jl-gps); font-size: 11px; letter-spacing: .02em;
 }
+#selchip { flex-wrap: wrap; max-width: calc(100% - 76px); }
+#selchip #selchiptext { flex: 1 1 140px; min-width: 0; line-height: 1.3; }
+#selchip .chipacts { display: flex; align-items: center; gap: 6px; flex: none; }
 #selchip button { flex: none; width: 24px; height: 24px; background: transparent; color: inherit; border: 1px solid var(--jl-muted-on-ink); font-size: 15px; line-height: 1; cursor: pointer; padding: 0; }
+#selchip button.txt { width: auto; padding: 0 8px; font-family: var(--font-heading); font-size: 9.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+/* Half-hour marks along a full track: the line read as a timeline. */
+.jl-tick { position: absolute; left: 6px; top: -9px; padding: 1px 4px; background: #fff; color: var(--jl-ink); border: 1.5px solid var(--jl-gps); font-family: var(--font-heading); font-weight: 700; font-size: 10px; white-space: nowrap; }
+.jl-tick.start { background: var(--jl-gps); color: #fff; }
 /* While the alert bar is up, everything pinned under the top bar moves below it. */
 body:has(#ccalert[style*="flex"]) #selchip { top: calc(46px + env(safe-area-inset-top) + 84px); }
 body:has(#ccalert[style*="flex"]) #fabs { top: calc(46px + env(safe-area-inset-top) + 84px); }
