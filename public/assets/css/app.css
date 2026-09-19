@@ -91,6 +91,9 @@ body:has(#mcard) .leaflet-bottom.leaflet-left { bottom: 74px; }
 .fab:active { background: var(--color-neutral-300); }
 .fab.on { background: var(--color-accent); border-color: var(--color-accent); color: var(--jl-on-ink); }
 .fab.on:hover { background: var(--color-accent-600); }
+/* The locate button speaks the blue dot's colour: filled while the map follows you, outlined while location is on but the map is free. */
+.fab.follow { background: var(--jl-gps); border-color: var(--jl-gps); color: #fff; }
+.fab.free { border-color: var(--jl-gps); color: var(--jl-gps); }
 .fab svg { width: 22px; height: 22px; }
 
 /* ── mode banners over the map ───────────────────────────────────────── */

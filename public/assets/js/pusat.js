@@ -702,6 +702,7 @@ function selectGroup(id) {
   }
   const g = positions.find((x) => x.id === id);
   if (!g || !g.last) return;
+  core.releaseFollow();               // looking at a group now: the locate button must not pull the map back
   selectedGroup = id;
   const fixes = drawTrail(g);
   const origin = ccOrigin();

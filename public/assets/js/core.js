@@ -92,7 +92,10 @@ export function boot({ editable = false } = {}) {
   let myPos = null;
   let myMarker = null;
   let myCircle = null;
-  let follow = false;
+  // The locate button: 'off' (no live GPS), 'follow' (map keeps me centred) or
+  // 'free' (GPS on, dot shown, map left alone). Following never locks the map:
+  // any pan, zoom or selection drops it to 'free'.
+  let locState = 'off';
   let gpsWatch = null;
   let deviceHeading = null;   // where the phone points, from its compass (degrees clockwise from north)
   let gpsCourse = null;       // where the phone is moving, from GPS, when walking fast enough
@@ -285,6 +288,7 @@ export function boot({ editable = false } = {}) {
   }
 
   $('strip').addEventListener('click', () => {
+    releaseFollow();
     if (hooks.stripClick && hooks.stripClick()) return;
     const target = findPoint(targetId);
     if (!target) return;
@@ -410,7 +414,14 @@ export function boot({ editable = false } = {}) {
       myCircle.setLatLng(myPos).setRadius(acc);
     }
     updateBeam();
-    if (follow) map.panTo(myPos);
+    if (locState === 'follow') {
+      if (firstFollowFix) {
+        firstFollowFix = false;
+        centreOnMe(Math.max(map.getZoom(), 15));
+      } else {
+        map.panTo(centreFor(myPos, map.getZoom()));
+      }
+    }
     renderPointList();
     updateStrip();
   }
@@ -427,30 +438,76 @@ export function boot({ editable = false } = {}) {
       gpsCourse = Number.isFinite(c.heading) && Number.isFinite(c.speed) && c.speed >= 0.5 ? c.heading : gpsCourse;
       setMyPos({ lat: c.latitude, lng: c.longitude }, c.accuracy);
     }, (error) => {
-      notify({ title: 'Gagal dapatkan lokasi', body: error.message });
-      stopFollow();
+      // Only a refusal ends it. A timeout or "unavailable" under trees is normal; the watch keeps trying.
+      if (error.code === 1) {
+        notify({ title: 'Lokasi tidak dibenarkan', body: 'Benarkan akses lokasi untuk pelayar ini dalam tetapan telefon, kemudian tekan butang lokasi sekali lagi.' });
+        setLocState('off');
+      } else if (!myPos) {
+        toast('Masih mencari isyarat GPS…');
+      }
     }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 });
     return true;
   }
 
-  function stopFollow() {
-    follow = false;
+  let firstFollowFix = false;
+
+  /** The map centre that puts `latlng` in the middle of what is visible: the target card covers the map's foot. */
+  function centreFor(latlng, zoom) {
+    const strip = $('strip');
+    const covered = strip ? strip.offsetHeight : 0;
+    return map.unproject(map.project(latlng, zoom).add([0, covered / 2]), zoom);
+  }
+  function centreOnMe(zoom) {
+    map.invalidateSize({ pan: false });
+    map.setView(centreFor(myPos, zoom), zoom);
+  }
+
+  function setLocState(next) {
+    locState = next;
     btnLocate.classList.remove('on');
-    btnLocate.setAttribute('aria-pressed', 'false');
+    btnLocate.classList.toggle('follow', next === 'follow');
+    btnLocate.classList.toggle('free', next === 'free');
+    btnLocate.setAttribute('aria-pressed', String(next !== 'off'));
+    btnLocate.title = next === 'follow' ? 'Mengikut lokasi saya — ketik untuk matikan'
+      : next === 'free' ? 'Lokasi hidup — ketik untuk kembali ke lokasi saya' : 'Lokasi saya';
+    if (next === 'off' && gpsWatch !== null) {
+      navigator.geolocation.clearWatch(gpsWatch);
+      gpsWatch = null;
+      // Where nothing else supplies a position (the command centre), the dot goes too.
+      if (editable) {
+        if (myMarker) { map.removeLayer(myMarker); myMarker = null; }
+        if (myCircle) { map.removeLayer(myCircle); myCircle = null; }
+        myPos = null;
+        renderPointList();
+        updateStrip();
+      }
+    }
+  }
+
+  /** The user looked elsewhere: keep the dot, stop steering the map. */
+  function releaseFollow() {
+    if (locState === 'follow') setLocState('free');
   }
 
   btnLocate.addEventListener('click', () => {
-    if (follow) {
-      stopFollow();
+    if (locState === 'follow') {            // already on me: this tap switches location off
+      setLocState('off');
       return;
     }
     if (!startGPS()) return;
-    follow = true;
-    btnLocate.classList.add('on');
-    btnLocate.setAttribute('aria-pressed', 'true');
-    if (myPos) map.panTo(myPos);
-    else toast('Mencari isyarat GPS…');
+    setLocState('follow');                  // from 'off' or 'free': go to me, and follow until the user looks elsewhere
+    if (myPos) centreOnMe(Math.max(map.getZoom(), 15));
+    else {
+      firstFollowFix = true;
+      toast('Mencari isyarat GPS…');
+    }
   });
+
+  // Any hand on the map means "I am looking at something else now".
+  map.on('dragstart', releaseFollow);
+  map.getContainer().addEventListener('wheel', releaseFollow, { passive: true });
+  map.getContainer().addEventListener('dblclick', releaseFollow);
+  map.getContainer().addEventListener('touchstart', (event) => { if (event.touches.length > 1) releaseFollow(); }, { passive: true });
 
   /* ── device compass ─────────────────────────────────────────────────── */
 
@@ -510,6 +567,7 @@ export function boot({ editable = false } = {}) {
       row.append(dist);
 
       row.addEventListener('click', () => {
+        releaseFollow();
         map.setView([point.lat, point.lng], Math.max(map.getZoom(), 15));
         if (markers[point.id]) markers[point.id].openPopup();
       });
@@ -564,6 +622,7 @@ export function boot({ editable = false } = {}) {
       }
 
       const zoomTo = () => {
+        releaseFollow();
         map.fitBounds(L.latLngBounds(route.latlngs).pad(0.2));
         if (routeLayers[route.id]) routeLayers[route.id].openPopup();
       };
@@ -603,7 +662,7 @@ export function boot({ editable = false } = {}) {
     if (myPos) bounds.extend(myPos);
     map.fitBounds(bounds.pad(0.15), { maxZoom: 16 });
   }
-  $('btnFit').addEventListener('click', () => fitAll(hooks.fitExtra ? hooks.fitExtra() : []));
+  $('btnFit').addEventListener('click', () => { releaseFollow(); fitAll(hooks.fitExtra ? hooks.fitExtra() : []); });
 
   /* ── peta offline ───────────────────────────────────────────────────── */
 
@@ -794,6 +853,7 @@ export function boot({ editable = false } = {}) {
     setMyPos,
     setCourse: (deg) => { gpsCourse = Number.isFinite(deg) ? deg : null; updateBeam(); },
     aimArrow,
+    releaseFollow,
     changed,
     applyState,
     setScheduleStart: (ms) => { scheduleStart = Number.isFinite(ms) ? ms : null; renderPointList(); },
