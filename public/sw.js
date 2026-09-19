@@ -10,7 +10,7 @@
    - TILES_AUTO  tiles that happened to be drawn while browsing. Cache-first
                 and trimmed, so casual panning cannot fill the device. */
 
-const VERSION = 'v32';
+const VERSION = 'v33';
 const SHELL = `jl-shell-${VERSION}`;
 const TILES_SAVED = 'jl-tiles-v1';
 const TILES_AUTO = 'jl-tiles-auto-v1';
@@ -40,6 +40,7 @@ const SHELL_FILES = [
   'assets/js/offline.js',
   'assets/js/lock.js',
   'assets/js/tabs.js',
+  'assets/js/alarm.js',
   'vendor/qrcode/qrcode.js',
   'assets/icons/favicon.svg',
   'assets/icons/icon-180.png',
@@ -75,6 +76,16 @@ self.addEventListener('activate', (event) => {
       .filter((key) => key.startsWith('jl-shell-') && key !== SHELL)
       .map((key) => caches.delete(key)));
     await self.clients.claim();
+  })());
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil((async () => {
+    const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const open = all.find((c) => /pusat|marshal/.test(c.url)) || all[0];
+    if (open) return open.focus();
+    return self.clients.openWindow('pusat.html');
   })());
 });
 

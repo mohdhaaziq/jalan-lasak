@@ -12,6 +12,7 @@ import { LAYERS, isStart, groupLabel } from './core.js';
 import { distM, fmtDist } from './geo.js';
 import { scheduleFor, paceEstimate, paceLabel } from './schedule.js';
 import { mountTabs } from './tabs.js';
+import { createAlarm, notifySystem } from './alarm.js';
 
 const POSITIONS_POLL_MS = 30 * 1000;
 const STALE_WARN_MS = 10 * 60 * 1000;
@@ -207,6 +208,30 @@ function fitAll() {
 
 $('btnMFit').addEventListener('click', fitAll);
 
+/* — SOS alarm, as at the command centre: rings until Terima is tapped; a new SOS rings again — */
+const alarm = createAlarm();
+const sosSeen = new Set();
+const sosAcked = new Set();
+function syncAlarm(inSos) {
+  const ids = new Set(inSos.map((g) => g.id));
+  for (const id of [...sosSeen]) if (!ids.has(id)) { sosSeen.delete(id); sosAcked.delete(id); }
+  const here = pointById(point);
+  for (const g of inSos) {
+    if (sosSeen.has(g.id)) continue;
+    sosSeen.add(g.id);
+    notifySystem('SOS — ' + g.name, here ? fmtDist(distM(g.last, here)) + ' dari checkpoint anda' : 'Lihat peta', 'sos-' + g.id);
+  }
+  const unacked = inSos.some((g) => !sosAcked.has(g.id));
+  if (unacked) alarm.start(); else alarm.stop();
+  $('btnAckM').hidden = !unacked;
+}
+$('btnAckM').addEventListener('click', () => {
+  for (const id of sosSeen) sosAcked.add(id);
+  alarm.stop();
+  $('btnAckM').hidden = true;
+  toast('Amaran diterima. Hubungi pusat kawalan melalui radio.', 5000);
+});
+
 let polling = false;
 async function pollPositions() {
   if (polling || !pin || !navigator.onLine) return;
@@ -218,6 +243,7 @@ async function pollPositions() {
     positions = data.groups;
     if (first) fitted = false;   // the first fixes widen the picture; frame them once
     const sos = positions.filter((g) => g.last && g.last.sos);
+    syncAlarm(sos);
     $('mposstat').textContent = (sos.length ? 'SOS ' + sos.map((g) => g.name).join(', ') + ' · ' : '') +
       'Kedudukan ' + clock(Date.now());
     $('mposstat').classList.toggle('bad', sos.length > 0);

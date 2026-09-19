@@ -222,7 +222,7 @@ body:has(#mcard) .leaflet-bottom.leaflet-left { bottom: 74px; }
 #strip .arrow svg { width: 28px; height: 28px; transition: transform .3s ease-out; }
 #strip .what { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 #strip .what .tgt { font-size: 12px; font-weight: 600; letter-spacing: .01em; color: var(--jl-on-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-transform: none; }
-#strip .what .val { font-family: var(--font-heading); font-weight: 800; font-size: 22px; line-height: 1.1; white-space: nowrap; }
+#strip .what .val { font-family: var(--font-heading); font-weight: 800; font-size: 22px; line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #strip .brg { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 1px; }
 #strip .brg .val { font-family: var(--font-heading); font-weight: 800; font-size: 18px; line-height: 1.1; color: var(--color-accent-300); }
 #strip .brg .tgt { font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--jl-muted-on-ink); white-space: nowrap; }
@@ -436,7 +436,25 @@ body:has(#tabbar) #toast { bottom: calc(54px + max(env(safe-area-inset-bottom, 0
   font-family: var(--font-heading); font-size: 12px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
   text-align: left;
 }
-#ccalert { border: 0; width: 100%; cursor: pointer; animation: jl-pulse 1.2s infinite; max-height: 4.4em; overflow: hidden; }
+#ccalert { align-items: center; gap: 10px; animation: jl-pulse 1.2s infinite; }
+#ccalerttext {
+  flex: 1; min-width: 0; max-height: 4.2em; overflow: hidden; text-align: left; cursor: pointer;
+  background: none; border: 0; padding: 0; color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit;
+}
+#ccalert .jl-btn { flex: none; }
+/* What the blue line is, and a way to let go of it. */
+#selchip {
+  position: absolute; left: 10px; top: calc(46px + env(safe-area-inset-top)); z-index: 1100;
+  display: flex; align-items: center; gap: 8px; max-width: calc(100% - 80px);
+  padding: 5px 6px 5px 10px; background: var(--jl-ink); color: var(--jl-on-ink);
+  border-left: 4px solid var(--jl-gps); font-size: 11px; letter-spacing: .02em;
+}
+#selchip button { flex: none; width: 24px; height: 24px; background: transparent; color: inherit; border: 1px solid var(--jl-muted-on-ink); font-size: 15px; line-height: 1; cursor: pointer; padding: 0; }
+/* While the alert bar is up, everything pinned under the top bar moves below it. */
+body:has(#ccalert[style*="flex"]) #selchip { top: calc(46px + env(safe-area-inset-top) + 84px); }
+body:has(#ccalert[style*="flex"]) #fabs { top: calc(46px + env(safe-area-inset-top) + 84px); }
+#alarmrow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 0 14px 8px; }
+#alarmrow .stat { flex: 1; min-width: 180px; }
 #sosbanner { align-items: center; gap: 10px; text-transform: none; letter-spacing: .02em; font-size: 12px; }
 /* While the SOS banner is up, the side buttons move below it. */
 body.sos-on #fabs { top: calc(140px + env(safe-area-inset-top)); }

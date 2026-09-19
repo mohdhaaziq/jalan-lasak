@@ -30,7 +30,14 @@
 
   <div id="map" role="application" aria-label="Peta pusat kawalan Jalan Lasak"></div>
 
-  <button type="button" id="ccalert" role="alert"></button>
+  <div id="ccalert" role="alert">
+    <button type="button" id="ccalerttext"></button>
+    <button type="button" class="jl-btn on-ink sm" id="btnAck" hidden>Terima</button>
+  </div>
+  <div id="selchip" hidden>
+    <span id="selchiptext"></span>
+    <button type="button" id="btnDeselect" aria-label="Tutup jejak">×</button>
+  </div>
   <div id="addbanner" role="status">Mod tambah — ketik pada peta untuk letak checkpoint</div>
 
   <div id="fabs">
@@ -76,6 +83,11 @@
       <section class="pane" id="pane-kumpulan" role="tabpanel" aria-labelledby="tab-kumpulan">
         <div class="stat pad top" id="posstat"></div>
         <div class="stat pad" id="syncstat"></div>
+        <div id="alarmrow">
+          <span class="stat" id="alarmstat"></span>
+          <button type="button" class="jl-btn sm" id="btnNotif" hidden>Benarkan notifikasi</button>
+          <button type="button" class="jl-btn sm" id="btnAlarmTest">Uji amaran</button>
+        </div>
         <div class="acts pad">
           <button type="button" class="jl-btn acc" id="btnStartAll">Mula semua</button>
           <button type="button" class="jl-btn" id="btnSmsIn">Masuk SMS</button>

@@ -8,7 +8,7 @@
 import { distM, bearing, fmtDist, pathKm } from './geo.js';
 
 /** Compass point in Malay for a bearing: 351° → "Barat Laut". */
-function cardinal(deg) {
+export function cardinal(deg) {
   const names = ['Utara', 'Timur Laut', 'Timur', 'Tenggara', 'Selatan', 'Barat Daya', 'Barat', 'Barat Laut'];
   return names[Math.round((((deg % 360) + 360) % 360) / 45) % 8];
 }
@@ -285,6 +285,7 @@ export function boot({ editable = false } = {}) {
   }
 
   $('strip').addEventListener('click', () => {
+    if (hooks.stripClick && hooks.stripClick()) return;
     const target = findPoint(targetId);
     if (!target) return;
     if (myPos) map.fitBounds(L.latLngBounds([myPos, target]).pad(0.35), { maxZoom: 16 });
@@ -293,6 +294,8 @@ export function boot({ editable = false } = {}) {
   });
 
   function updateStrip() {
+    // A role may show something else in the card (the command centre: the selected group).
+    if (hooks.strip && hooks.strip()) return;
     const target = findPoint(targetId);
     const nameEl = $('tgtname');
     const distEl = $('tgtdist');
@@ -315,7 +318,9 @@ export function boot({ editable = false } = {}) {
       if (cardEl) cardEl.textContent = '';
       return;
     }
-    distEl.textContent = fmtDist(distM(origin, target)) + (myPos ? '' : ' dari MULA');
+    // The number stays big; where it is measured from rides on the name line.
+    if (!myPos) nameEl.textContent = target.name + ' · dari MULA';
+    distEl.textContent = fmtDist(distM(origin, target));
     const brg = bearing(origin, target);
     brgEl.textContent = Math.round(brg) + '°';
     if (cardEl) cardEl.textContent = cardinal(brg);

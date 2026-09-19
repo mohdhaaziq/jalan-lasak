@@ -3,12 +3,13 @@
    is late or sends SOS. Proven to the server by the CC_KEY, entered once and
    kept on this device. */
 
-import { boot, $, el, isStart, groupLabel } from './core.js';
+import { boot, $, el, isStart, groupLabel, cardinal } from './core.js';
 import { mountEditing } from './edit.js';
 import { getState, putState, putGroups, putSettings, getPositions, postPositions, postCheckins } from './api.js';
 import { loadCCKey, saveCCKey, saveState } from './store.js';
 import { askText, askChoice, askConfirm, notify, toast } from './ui.js';
-import { distM, fmtDist } from './geo.js';
+import { distM, fmtDist, bearing } from './geo.js';
+import { createAlarm, notificationState, requestNotifications, notifySystem } from './alarm.js';
 import { scheduleFor, lateness, etaLabel, paceEstimate, paceLabel } from './schedule.js';
 import { mountTabs } from './tabs.js';
 
@@ -649,29 +650,117 @@ function renderPositions() {
   renderAlert(statuses);
 }
 
+/* ── selecting a group: its recent trail, and how far it is from the command centre ── */
+
+const TRAIL_WINDOW_MS = 2 * 60 * 60 * 1000;   // show the last two hours
+const TRAIL_GAP_MS = 20 * 60 * 1000;          // a silence this long breaks the line …
+const TRAIL_JUMP_M = 1500;                    // … and so does a jump this far: the phone was off, not flying
+const TRAIL_COLOR = '#2a78d6';                // GPS blue: where they have been (red is the planned route)
+
+function clearSelection() {
+  selectedGroup = null;
+  if (trailLine) map.removeLayer(trailLine);
+  trailLine = null;
+  $('selchip').hidden = true;
+  core.updateStrip();
+  renderPositions();
+}
+
+function drawTrail(g) {
+  if (trailLine) map.removeLayer(trailLine);
+  trailLine = L.layerGroup().addTo(map);
+  const since = (g.last ? g.last.at : serverNow) - TRAIL_WINDOW_MS;
+  const fixes = g.trail.filter((t) => t[2] >= since);
+  let segment = [];
+  const flush = () => {
+    if (segment.length > 1) L.polyline(segment, { color: TRAIL_COLOR, weight: 4, opacity: 0.85, interactive: false }).addTo(trailLine);
+    segment = [];
+  };
+  fixes.forEach((t, i) => {
+    const prev = fixes[i - 1];
+    if (prev && (t[2] - prev[2] > TRAIL_GAP_MS || distM({ lat: prev[0], lng: prev[1] }, { lat: t[0], lng: t[1] }) > TRAIL_JUMP_M)) flush();
+    segment.push([t[0], t[1]]);
+    L.circleMarker([t[0], t[1]], { radius: 3, color: '#fff', weight: 1, fillColor: TRAIL_COLOR, fillOpacity: 1, interactive: false }).addTo(trailLine);
+  });
+  flush();
+  return fixes;
+}
+
+/** Where distances to a group are measured from: this device if it knows where it is, otherwise MULA. */
+function ccOrigin() {
+  const me = core.myPos();
+  if (me) return { pos: me, label: 'pusat kawalan' };
+  const start = state.points.find(isStart);
+  return start ? { pos: start, label: 'MULA' } : null;
+}
+
+let hintedLocate = false;
 function selectGroup(id) {
+  if (selectedGroup === id) {          // tapping the selected group again lets go of it
+    clearSelection();
+    return;
+  }
   const g = positions.find((x) => x.id === id);
   if (!g || !g.last) return;
   selectedGroup = id;
-  if (trailLine) map.removeLayer(trailLine);
-  trailLine = null;
-  if (g.trail.length > 1) {
-    trailLine = L.polyline(g.trail.map((t) => [t[0], t[1]]), {
-      color: '#201e1d', weight: 3, opacity: 0.8, dashArray: '2 6'
-    }).addTo(map);
-    map.fitBounds(trailLine.getBounds().pad(0.3), { maxZoom: 16 });
-  } else {
-    map.setView([g.last.lat, g.last.lng], Math.max(map.getZoom(), 15));
+  const fixes = drawTrail(g);
+  const origin = ccOrigin();
+  const pts = fixes.map((t) => [t[0], t[1]]).concat([[g.last.lat, g.last.lng]]);
+  if (origin) pts.push([origin.pos.lat, origin.pos.lng]);
+  map.fitBounds(L.latLngBounds(pts).pad(0.25), { maxZoom: 16, paddingBottomRight: [56, 70], paddingTopLeft: [12, 40] });
+  const index = positions.indexOf(g);
+  $('selchiptext').textContent = 'Jejak K' + groupLabel(g, index) + ' · 2 jam terakhir (garis biru)';
+  $('selchip').hidden = false;
+  if (!core.myPos() && !hintedLocate) {
+    hintedLocate = true;
+    toast('Jarak dikira dari MULA. Tekan ◎ (Lokasi saya) untuk jarak dari lokasi pusat kawalan.', 6000);
   }
+  core.updateStrip();
   renderPositions();
 }
+
+$('btnDeselect').addEventListener('click', clearSelection);
+
+// While a group is selected the card at the map's foot is about that group:
+// how far it is from the command centre, and in which direction.
+core.hooks.strip = () => {
+  const g = selectedGroup && positions.find((x) => x.id === selectedGroup);
+  if (!g || !g.last) return false;
+  const origin = ccOrigin();
+  const index = positions.indexOf(g);
+  $('tgtname').textContent = (g.last.sos ? 'SOS · ' : '') + 'K' + groupLabel(g, index) + ' · ' + g.name +
+    (origin ? ' · dari ' + origin.label : '');
+  if (!origin) {
+    $('tgtdist').textContent = '— km';
+    $('tgtbrg').textContent = '—°';
+    $('tgtcard').textContent = '';
+    return true;
+  }
+  const brg = bearing(origin.pos, g.last);
+  $('tgtdist').textContent = fmtDist(distM(origin.pos, g.last));
+  $('tgtbrg').textContent = Math.round(brg) + '°';
+  $('tgtcard').textContent = cardinal(brg);
+  $('arrowsvg').style.transform = `rotate(${brg}deg)`;
+  return true;
+};
+core.hooks.stripClick = () => {
+  const g = selectedGroup && positions.find((x) => x.id === selectedGroup);
+  if (!g || !g.last) return false;
+  const origin = ccOrigin();
+  const pts = [[g.last.lat, g.last.lng]];
+  if (origin) pts.push([origin.pos.lat, origin.pos.lng]);
+  map.fitBounds(L.latLngBounds(pts).pad(0.3), { maxZoom: 16, paddingBottomRight: [56, 70] });
+  return true;
+};
 
 /* ── alert bar: SOS and badly late groups ───────────────────────────── */
 
 const alertBar = $('ccalert');
+const alertText = $('ccalerttext');
 let audio = null;
 let lastBeep = 0;
 
+/** A short reminder for late groups; SOS has the siren below. */
 function beep() {
   try {
     audio = audio || new (window.AudioContext || window.webkitAudioContext)();
@@ -691,6 +780,48 @@ function beep() {
   if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 200]);
 }
 
+/* — SOS alarm: rings until someone taps Terima; a new SOS rings again — */
+const alarm = createAlarm();
+const sosSeen = new Set();    // groups whose current SOS has already rung
+const sosAcked = new Set();   // … and been acknowledged here
+
+function syncAlarm() {
+  const inSos = positions.filter((g) => g.last && g.last.sos);
+  const ids = new Set(inSos.map((g) => g.id));
+  for (const id of [...sosSeen]) if (!ids.has(id)) { sosSeen.delete(id); sosAcked.delete(id); }   // SOS cancelled
+  for (const g of inSos) {
+    if (sosSeen.has(g.id)) continue;
+    sosSeen.add(g.id);
+    const near = nearestPoint(g.last);
+    notifySystem('SOS — ' + g.name, (near ? fmtDist(near.d) + ' dari ' + pointName(near.p) + ' · ' : '') +
+      g.last.lat.toFixed(5) + ', ' + g.last.lng.toFixed(5), 'sos-' + g.id);
+  }
+  const unacked = inSos.some((g) => !sosAcked.has(g.id));
+  if (unacked) alarm.start(); else alarm.stop();
+  $('btnAck').hidden = !unacked;
+}
+
+$('btnAck').addEventListener('click', () => {
+  for (const id of sosSeen) sosAcked.add(id);
+  syncAlarm();
+  toast('Amaran diterima. SOS kekal dipaparkan sehingga kumpulan membatalkannya.', 5000);
+});
+
+function renderAlarmRow() {
+  const n = notificationState();
+  $('alarmstat').textContent = 'Amaran SOS: siren berbunyi sehingga ditekan Terima' +
+    (n === 'granted' ? ' · notifikasi dibenarkan' : n === 'denied' ? ' · notifikasi disekat dalam tetapan telefon' :
+      n === 'unsupported' ? ' · notifikasi tidak disokong di sini' : ' · notifikasi belum dibenarkan');
+  $('btnNotif').hidden = n !== 'default';
+}
+$('btnNotif').addEventListener('click', async () => { await requestNotifications(); renderAlarmRow(); });
+$('btnAlarmTest').addEventListener('click', () => {
+  alarm.test();
+  notifySystem('Ujian amaran — Jalan Lasak', 'Beginilah amaran SOS akan muncul.', 'sos-test');
+  toast('Ujian: satu letusan siren. Tiada bunyi? Naikkan kelantangan dan matikan mod senyap.', 6000);
+});
+renderAlarmRow();
+
 function renderAlert(statuses) {
   const parts = [];
   for (const g of positions) {
@@ -700,29 +831,32 @@ function renderAlert(statuses) {
         (near ? ' · ' + fmtDist(near.d) + ' dari ' + pointName(near.p) : ''));
     }
   }
+  let lateBad = false;
   for (const g of positions) {
     const st = statuses.get(g.id);
     if (lateness(st) === 'bad') {
+      lateBad = true;
       parts.push('LEWAT ' + g.name + ' · ' + pointName(st.next.point) + ' dijangka ' + clock(st.next.expectedAt) +
         ' · ' + minutes(st.lateMs) + (g.last ? ' · dilihat ' + ago(serverNow - g.last.at) : ' · tiada kedudukan'));
     }
   }
+  syncAlarm();
   if (!parts.length) {
     alertBar.style.display = 'none';
     return;
   }
-  alertBar.textContent = parts.join(' | ');
-  alertBar.style.display = 'block';
-  if (Date.now() - lastBeep > 60 * 1000) {
+  alertText.textContent = parts.join(' | ');
+  alertBar.style.display = 'flex';
+  if (lateBad && !alarm.ringing() && Date.now() - lastBeep > 60 * 1000) {
     beep();
     lastBeep = Date.now();
   }
 }
 
-alertBar.addEventListener('click', () => {
+alertText.addEventListener('click', () => {
   const g = positions.find((x) => x.last && x.last.sos) ||
     positions.find((x) => lateness(scheduleFor(x, state.points, serverNow)) === 'bad' && x.last);
-  if (g) selectGroup(g.id);
+  if (g && selectedGroup !== g.id) selectGroup(g.id);
 });
 
 /* ── polling ────────────────────────────────────────────────────────── */
@@ -744,6 +878,9 @@ async function pollPositions() {
     }
     if (pinsChanged) renderGroups();
     $('posstat').textContent = 'Dikemas kini ' + clock(Date.now());
+    const sel = selectedGroup && positions.find((x) => x.id === selectedGroup);
+    if (sel && sel.last) drawTrail(sel); else if (selectedGroup) clearSelection();
+    core.updateStrip();
     renderPositions();
   } catch (err) {
     $('posstat').textContent = 'Kedudukan: ' + err.message;
