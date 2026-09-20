@@ -102,7 +102,7 @@ export function boot({ editable = false } = {}) {
 
   const markers = {};
   const routeLayers = {};
-  const hooks = { change: null, rename: null, remove: null, eta: null, mapClick: null, mapHold: null };
+  const hooks = { change: null, rename: null, remove: null, eta: null, coords: null, mapClick: null, mapHold: null };
   let scheduleStart = null;   // this group's start time, for showing ETAs as clock times
 
   const findPoint = (id) => state.points.find((p) => p.id === id);
@@ -204,6 +204,7 @@ export function boot({ editable = false } = {}) {
     actions.append(action('Sasar', true, () => setTarget(point.id)));
     if (editable) {
       actions.append(action('Nama', false, () => hooks.rename && hooks.rename(point.id)));
+      actions.append(action('Koordinat', false, () => hooks.coords && hooks.coords(point.id)));
       if (!isStart(point)) {
         actions.append(action('Masa', false, () => hooks.eta && hooks.eta(point.id)));
         actions.append(action('Padam', false, () => hooks.remove && hooks.remove(point.id)));

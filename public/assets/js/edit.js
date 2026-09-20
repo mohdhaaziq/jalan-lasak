@@ -2,7 +2,7 @@
    delete checkpoints, and draw suggested routes. Every mutation goes through
    core.changed(), which is what pusat.js listens to for pushing to the server. */
 
-import { pathKm } from './geo.js';
+import { pathKm, distM, fmtDist } from './geo.js';
 import { askText, askChoice, askConfirm, notify, toast } from './ui.js';
 import { $, isStart, routeLabel } from './core.js';
 
@@ -73,6 +73,116 @@ export function mountEditing(core) {
     core.rebuildMarkers();
     core.updateStrip();
   }
+
+  /* ── coordinates by hand ────────────────────────────────────────────── */
+
+  /**
+   * Read a pair of coordinates from free text. Accepts what people actually
+   * paste: "3.556673, 101.622709", the same with a space or semicolon, a
+   * Google Maps URL, or degrees-minutes-seconds ("3°33'24.0\"N 101°37'21.8\"E").
+   * Returns { lat, lng } or null.
+   */
+  function parseLatLng(text) {
+    if (typeof text !== 'string') return null;
+    let s = text.trim();
+    // A maps link: take the @lat,lng or the q=/ll= parameter.
+    const at = /[@=](-?\d{1,2}(?:\.\d+)?),\s*(-?\d{1,3}(?:\.\d+)?)/.exec(s);
+    if (/https?:\/\//i.test(s) && at) s = at[1] + ',' + at[2];
+    // Degrees, minutes, seconds with hemispheres.
+    const dms = /(-?\d{1,3})\s*[°d:\s]\s*(\d{1,2}(?:\.\d+)?)\s*['m:\s]\s*(?:(\d{1,2}(?:\.\d+)?)\s*["s]?)?\s*([NSEW])/gi;
+    const found = [];
+    let m;
+    while ((m = dms.exec(s)) !== null) {
+      const deg = Math.abs(parseFloat(m[1])) + parseFloat(m[2]) / 60 + (m[3] ? parseFloat(m[3]) / 3600 : 0);
+      const hemi = m[4].toUpperCase();
+      found.push({ value: 'SW'.includes(hemi) ? -deg : deg, axis: 'NS'.includes(hemi) ? 'lat' : 'lng' });
+    }
+    if (found.length === 2) {
+      const lat = found.find((f) => f.axis === 'lat');
+      const lng = found.find((f) => f.axis === 'lng');
+      if (lat && lng) return { lat: lat.value, lng: lng.value };
+    }
+    // Plain decimal pair.
+    const pair = /(-?\d{1,2}(?:\.\d+)?)\s*[,;\s]\s*(-?\d{1,3}(?:\.\d+)?)/.exec(s);
+    if (!pair) return null;
+    return { lat: parseFloat(pair[1]), lng: parseFloat(pair[2]) };
+  }
+
+  const inMalaysia = (c) => c.lat > 0.5 && c.lat < 7.5 && c.lng > 99 && c.lng < 120;
+
+  /**
+   * Ask for a coordinate pair and hand back a clean { lat, lng }, or null if
+   * the operator backed out. Rejects nonsense, and asks twice before
+   * accepting a point outside Malaysia (usually lat and lng swapped).
+   */
+  async function askLatLng({ title, body, value }) {
+    for (;;) {
+      const text = await askText({
+        title,
+        body,
+        value: value || '',
+        placeholder: '3.556673, 101.622709',
+        label: 'Latitud, longitud',
+        okLabel: 'Simpan'
+      });
+      if (text === null) return null;
+      const coords = parseLatLng(text);
+      if (!coords || !Number.isFinite(coords.lat) || !Number.isFinite(coords.lng) ||
+          Math.abs(coords.lat) > 90 || Math.abs(coords.lng) > 180) {
+        await notify({
+          title: 'Koordinat tidak difahami',
+          body: 'Taip latitud dan longitud dipisahkan koma, contohnya 3.556673, 101.622709. Pautan Google Maps dan format darjah-minit-saat juga diterima.'
+        });
+        value = text;
+        continue;
+      }
+      if (!inMalaysia(coords)) {
+        const ok = await askConfirm({
+          title: 'Di luar Malaysia?',
+          body: coords.lat.toFixed(6) + ', ' + coords.lng.toFixed(6) + ' jauh dari kawasan program. Latitud dan longitud mungkin tertukar. Teruskan?',
+          okLabel: 'Teruskan'
+        });
+        if (!ok) {
+          value = text;
+          continue;
+        }
+      }
+      return { lat: Math.round(coords.lat * 1e6) / 1e6, lng: Math.round(coords.lng * 1e6) / 1e6 };
+    }
+  }
+
+  async function editCoords(id) {
+    const point = state.points.find((p) => p.id === id);
+    if (!point) return;
+    const coords = await askLatLng({
+      title: 'Koordinat — ' + point.name,
+      body: 'Titik ini akan dialihkan ke koordinat yang dimasukkan.',
+      value: point.lat.toFixed(6) + ', ' + point.lng.toFixed(6)
+    });
+    if (!coords) return;
+    const moved = distM(point, coords);
+    point.lat = coords.lat;
+    point.lng = coords.lng;
+    core.changed();
+    core.rebuildMarkers();
+    core.rerender();
+    map.closePopup();
+    map.setView([point.lat, point.lng], Math.max(map.getZoom(), 15));
+    toast(point.name + ' dialihkan ' + fmtDist(moved) + '.');
+  }
+
+  async function addByCoords() {
+    const coords = await askLatLng({
+      title: 'Checkpoint baharu dari koordinat',
+      body: 'Tampal koordinat dari GPS, peta atau pengakap. Nama boleh ditetapkan selepas ini.'
+    });
+    if (!coords) return;
+    await addPointAt(L.latLng(coords.lat, coords.lng));
+    map.setView([coords.lat, coords.lng], Math.max(map.getZoom(), 15));
+  }
+
+  const btnAddCoords = $('btnAddCoords');
+  if (btnAddCoords) btnAddCoords.addEventListener('click', addByCoords);
 
   async function setEta(id) {
     const point = state.points.find((p) => p.id === id);
@@ -249,6 +359,7 @@ export function mountEditing(core) {
   core.hooks.rename = renamePoint;
   core.hooks.remove = deletePoint;
   core.hooks.eta = setEta;
+  core.hooks.coords = editCoords;
   core.hooks.removeRoute = deleteRoute;
   core.hooks.mapClick = (latlng) => {
     if (drawMode) {
