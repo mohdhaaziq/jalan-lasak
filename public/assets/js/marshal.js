@@ -8,7 +8,7 @@
 import { getState, postCheckins, getPositions } from './api.js';
 import { loadState, saveState, loadMarshal, saveMarshal, loadCheckinQueue, saveCheckinQueue, deviceId, loadPrefs, savePrefs } from './store.js';
 import { askText, askChoice, askConfirm, notify, toast } from './ui.js';
-import { LAYERS, isStart, groupLabel } from './core.js';
+import { LAYERS, isStart, groupLabel, keepPopupClear } from './core.js';
 import { distM, fmtDist } from './geo.js';
 import { scheduleFor, paceEstimate, paceLabel } from './schedule.js';
 import { mountTabs } from './tabs.js';
@@ -69,6 +69,8 @@ const L = window.L;
 const map = L.map('map', { zoomControl: false, attributionControl: true });
 map.attributionControl.setPrefix(false);
 L.control.scale({ imperial: false, position: 'bottomleft', maxWidth: 120 }).addTo(map);
+keepPopupClear(map);
+if (window.ResizeObserver) new ResizeObserver(() => map.invalidateSize({ pan: false })).observe(map.getContainer());
 map.setView([3.556879, 101.632263], 12);   // MULA, until the program has loaded
 
 /* — base layers, as on the participant map; the choice is remembered on this phone — */

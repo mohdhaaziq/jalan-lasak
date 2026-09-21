@@ -79,6 +79,45 @@ export function groupLabel(group, index = 0) {
   return initials || String(index + 1);
 }
 
+/**
+ * Keep an open popup out from under the app's own chrome. Leaflet pans a popup
+ * into the map element, but the alert bar, banners and the target card float
+ * over that element, so a popup near an edge can open behind them.
+ */
+export function keepPopupClear(map) {
+  const overlaysTop = ['ccalert', 'sosbanner', 'addbanner', 'drawbar', 'selchip'];
+  const overlaysBottom = ['strip', 'mcard'];
+  const visible = (id) => {
+    const node = document.getElementById(id);
+    if (!node || node.hidden || node.offsetParent === null) return null;
+    const box = node.getBoundingClientRect();
+    return box.height ? box : null;
+  };
+  map.on('popupopen', (event) => {
+    const node = event.popup.getElement();
+    if (!node) return;
+    setTimeout(() => {
+      const box = node.getBoundingClientRect();
+      const area = map.getContainer().getBoundingClientRect();
+      let top = area.top;
+      let bottom = area.bottom;
+      for (const id of overlaysTop) {
+        const o = visible(id);
+        if (o && o.bottom > top && o.top < bottom) top = Math.max(top, o.bottom);
+      }
+      for (const id of overlaysBottom) {
+        const o = visible(id);
+        if (o && o.top < bottom && o.bottom > top) bottom = Math.min(bottom, o.top);
+      }
+      const pad = 8;
+      let dy = 0;
+      if (box.top < top + pad) dy = box.top - (top + pad);
+      else if (box.bottom > bottom - pad) dy = Math.min(box.bottom - (bottom - pad), box.top - (top + pad));
+      if (Math.abs(dy) > 1) map.panBy([0, dy], { animate: true });
+    }, 30);
+  });
+}
+
 export function boot({ editable = false } = {}) {
   const L = window.L;
   if (!L) throw new Error('Leaflet tidak dimuatkan — semak vendor/leaflet/leaflet.js');
@@ -115,6 +154,11 @@ export function boot({ editable = false } = {}) {
   // the tile sources' attribution is the part that has to stay.
   map.attributionControl.setPrefix(false);
   L.control.scale({ imperial: false, position: 'bottomleft', maxWidth: 120 }).addTo(map);
+
+  keepPopupClear(map);
+  // Banners above the map change its height; Leaflet must be told, or tiles and
+  // markers drift and an open popup is clipped.
+  if (window.ResizeObserver) new ResizeObserver(() => map.invalidateSize({ pan: false })).observe(map.getContainer());
 
   const baseLayers = {};
   for (const [key, source] of Object.entries(LAYERS)) {
@@ -190,27 +234,46 @@ export function boot({ editable = false } = {}) {
     });
   }
 
+  /**
+   * The popup, grouped the way the actions differ: what this point is, the one
+   * thing anyone does with it (aim the compass), the edits, and — kept apart
+   * below a rule — the one action that cannot be undone.
+   */
   function popupContent(point) {
     const wrap = el('div');
     wrap.append(el('div', 'pop-name', point.name), el('div', 'pop-co', coordText(point)));
 
-    const actions = el('div', 'pop-actions');
-    const action = (label, accent, handler) => {
-      const button = el('button', 'jl-btn sm' + (accent ? ' acc' : ''), label);
-      button.type = 'button';
-      button.addEventListener('click', handler);
-      return button;
-    };
-    actions.append(action('Sasar', true, () => setTarget(point.id)));
     if (editable) {
-      actions.append(action('Nama', false, () => hooks.rename && hooks.rename(point.id)));
-      actions.append(action('Koordinat', false, () => hooks.coords && hooks.coords(point.id)));
+      const bits = [];
+      if (point.code) bits.push('Kod ' + point.code);
+      if (!isStart(point)) bits.push(Number.isFinite(point.etaMin) ? 'Dijangka +' + point.etaMin + ' min' : 'Masa belum ditetapkan');
+      if (bits.length) wrap.append(el('div', 'pop-meta', bits.join(' · ')));
+    }
+
+    const button = (label, cls, handler) => {
+      const b = el('button', 'jl-btn sm ' + cls, label);
+      b.type = 'button';
+      b.addEventListener('click', handler);
+      return b;
+    };
+
+    const primary = el('div', 'pop-actions');
+    primary.append(button('Sasar kompas ke sini', 'acc', () => setTarget(point.id)));
+    wrap.append(primary);
+
+    if (editable) {
+      const edits = el('div', 'pop-edit');
+      edits.append(button('Nama', '', () => hooks.rename && hooks.rename(point.id)));
+      edits.append(button('Koordinat', '', () => hooks.coords && hooks.coords(point.id)));
+      if (!isStart(point)) edits.append(button('Masa', '', () => hooks.eta && hooks.eta(point.id)));
+      wrap.append(edits);
+
       if (!isStart(point)) {
-        actions.append(action('Masa', false, () => hooks.eta && hooks.eta(point.id)));
-        actions.append(action('Padam', false, () => hooks.remove && hooks.remove(point.id)));
+        const danger = el('div', 'pop-danger');
+        danger.append(button('Padam checkpoint', 'danger', () => hooks.remove && hooks.remove(point.id)));
+        wrap.append(danger);
       }
     }
-    wrap.append(actions);
     return wrap;
   }
 
@@ -228,7 +291,7 @@ export function boot({ editable = false } = {}) {
         keyboard: true,
         alt: point.name
       });
-      marker.bindPopup(() => popupContent(point));
+      marker.bindPopup(() => popupContent(point), { maxWidth: 260, minWidth: 210 });
       if (editable) {
         marker.on('dragend', () => {
           const ll = marker.getLatLng();

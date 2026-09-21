@@ -67,6 +67,8 @@ html.ios-standalone #app { position: absolute; }
 /* ── map ─────────────────────────────────────────────────────────────── */
 #map { flex: 1; min-height: 0; background: var(--jl-map-bg); }
 .leaflet-container { font-family: var(--font-body); background: var(--jl-map-bg); }
+/* The map is the flexible middle of the column; banners above it take their own space. */
+#map { position: relative; }
 .leaflet-control-attribution { font-size: 9.5px; border-radius: var(--radius-md); }
 /* The target card floats over the map's bottom edge; keep the scale bar and
    the credits above it, and the scale bar clear of the credits. */
@@ -78,7 +80,7 @@ body:has(#mcard) .leaflet-bottom.leaflet-left { bottom: 74px; }
 
 /* ── side buttons ────────────────────────────────────────────────────── */
 #fabs {
-  position: absolute; right: 10px; top: calc(46px + env(safe-area-inset-top));
+  position: absolute; right: 10px; top: 10px;   /* against the map, which starts below any banner */
   display: flex; flex-direction: column; gap: 8px; z-index: 1100;
 }
 .fab {
@@ -97,10 +99,9 @@ body:has(#mcard) .leaflet-bottom.leaflet-left { bottom: 74px; }
 .fab svg { width: 22px; height: 22px; }
 
 /* ── mode banners over the map ───────────────────────────────────────── */
-#addbanner, #drawbar {
-  position: absolute; left: 0; right: 0; top: calc(36px + env(safe-area-inset-top));
-  z-index: 1160;   /* above the alert bar: an operator mid-edit must still reach Undo / Batal / Siap */
-}
+/* Banners sit in the column above the map, so nothing they say ever covers it
+   and the map's own size stays truthful. */
+#addbanner, #drawbar { flex: none; z-index: 1160; }
 #addbanner {
   display: none;
   padding: 8px 14px;
@@ -135,6 +136,10 @@ body:has(#mcard) .leaflet-bottom.leaflet-left { bottom: 74px; }
 .jl-btn.on-ink:hover { background: color-mix(in srgb, var(--color-bg) 16%, transparent); }
 .jl-btn.on-ink.acc { background: var(--color-accent); border-color: var(--color-accent); }
 .jl-btn.sm { min-height: 0; padding: 5px 7px; font-size: 9.5px; }
+/* Deleting is the one action that cannot be undone: red word, red rule, filled only on press. */
+.jl-btn.danger, .jl-btn.del { border-color: var(--color-accent); color: var(--color-accent); }
+.jl-btn.danger:hover, .jl-btn.del:hover { background: var(--color-accent-100); }
+.jl-btn.danger:active, .jl-btn.del:active { background: var(--color-accent); color: var(--jl-on-ink); }
 
 /* ── bottom sheet ────────────────────────────────────────────────────── */
 #sheet {
@@ -356,9 +361,15 @@ body:has(#mcard) .leaflet-bottom.leaflet-left { bottom: 74px; }
 .leaflet-popup-tip { border-radius: 0; box-shadow: none; background: var(--jl-ink); }
 .leaflet-popup-content { font-family: var(--font-body); margin: 12px 14px; }
 .leaflet-popup-close-button { display: none; }
-.pop-name { font-family: var(--font-heading); font-weight: 800; font-size: 14px; margin-bottom: 2px; }
-.pop-co { font-size: 10.5px; color: var(--jl-muted); margin-bottom: 8px; }
-.pop-actions { display: flex; gap: 6px; }
+.pop-name { font-family: var(--font-heading); font-weight: 800; font-size: 14px; margin-bottom: 2px; line-height: 1.2; }
+.pop-co { font-size: 10.5px; color: var(--jl-muted); }
+.pop-meta { font-size: 10.5px; color: var(--jl-muted); margin-top: 2px; }
+/* One thing to do, then the edits, then — below a rule — the one that cannot be undone. */
+.pop-actions { display: flex; margin-top: 10px; }
+.pop-actions .jl-btn { flex: 1; justify-content: center; }
+.pop-edit { display: flex; gap: 6px; margin-top: 6px; }
+.pop-edit .jl-btn { flex: 1; justify-content: center; }
+.pop-danger { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--jl-rule); display: flex; justify-content: flex-end; }
 
 /* ── dialogs (replace the browser's prompt/confirm/alert) ────────────── */
 .jl-backdrop { z-index: 2000; }
@@ -373,8 +384,8 @@ body:has(#mcard) .leaflet-bottom.leaflet-left { bottom: 74px; }
 .jl-dialog .pin-big { font-family: var(--font-heading); font-weight: 800; font-size: 40px; letter-spacing: .18em; color: var(--jl-ink); margin: 12px 0; user-select: all; }
 .jl-dialog .input { background: var(--color-bg); border: 2px solid var(--jl-ink); min-height: 44px; }
 .jl-dialog .input:focus-visible { border-color: var(--color-accent); }
-.jl-dialog .dialog-actions { justify-content: flex-start; flex-wrap: wrap; }
-.jl-dialog .jl-btn { min-height: 40px; padding: 8px 12px; }
+.jl-dialog .dialog-actions { justify-content: flex-start; flex-wrap: wrap; gap: 8px; }
+.jl-dialog .jl-btn { min-height: 44px; padding: 8px 14px; }
 
 /* ── toast ───────────────────────────────────────────────────────────── */
 #toast {
@@ -435,22 +446,25 @@ body:has(#tabbar) #toast { bottom: calc(54px + max(env(safe-area-inset-bottom, 0
 .fab.sos:disabled { opacity: .45; cursor: not-allowed; }
 .fab.sos.on { background: var(--color-accent); color: var(--jl-on-ink); animation: jl-pulse 1.2s infinite; }
 #sosbanner, #ccalert {
-  position: absolute; left: 0; right: 0; top: calc(36px + env(safe-area-inset-top));
-  z-index: 1150; display: none;
+  flex: none; z-index: 1150; display: none;
   padding: 10px 14px;
   background: var(--color-accent); color: var(--jl-on-ink);
   font-family: var(--font-heading); font-size: 12px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
   text-align: left;
 }
-#ccalert { align-items: center; gap: 10px; animation: jl-pulse 1.2s infinite; }
+/* One line by default, so the bar's height never changes under the operator and
+   the map never jumps mid-emergency; the chip opens the rest. */
+#ccalert { align-items: flex-start; gap: 10px; animation: jl-pulse 1.2s infinite; }
 #ccalerttext {
-  flex: 1; min-width: 0; max-height: 4.2em; overflow: hidden; text-align: left; cursor: pointer;
+  flex: 1; min-width: 0; text-align: left; cursor: pointer;
   background: none; border: 0; padding: 0; color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+#ccalert.open #ccalerttext { white-space: normal; max-height: 5.4em; overflow-y: auto; }
 #ccalert .jl-btn { flex: none; }
 /* What the blue line is, and a way to let go of it. */
 #selchip {
-  position: absolute; left: 10px; top: calc(46px + env(safe-area-inset-top)); z-index: 1100;
+  position: absolute; left: 10px; top: 10px; z-index: 1100;
   display: flex; align-items: center; gap: 8px; max-width: calc(100% - 80px);
   padding: 5px 6px 5px 10px; background: var(--jl-ink); color: var(--jl-on-ink);
   border-left: 4px solid var(--jl-gps); font-size: 11px; letter-spacing: .02em;
@@ -463,14 +477,11 @@ body:has(#tabbar) #toast { bottom: calc(54px + max(env(safe-area-inset-bottom, 0
 /* Half-hour marks along a full track: the line read as a timeline. */
 .jl-tick { position: absolute; left: 6px; top: -9px; padding: 1px 4px; background: #fff; color: var(--jl-ink); border: 1.5px solid var(--jl-gps); font-family: var(--font-heading); font-weight: 700; font-size: 10px; white-space: nowrap; }
 .jl-tick.start { background: var(--jl-gps); color: #fff; }
-/* While the alert bar is up, everything pinned under the top bar moves below it. */
-body:has(#ccalert[style*="flex"]) #selchip { top: calc(46px + env(safe-area-inset-top) + 84px); }
-body:has(#ccalert[style*="flex"]) #fabs { top: calc(46px + env(safe-area-inset-top) + 84px); }
+
 #alarmrow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 0 14px 8px; }
 #alarmrow .stat { flex: 1; min-width: 180px; }
 #sosbanner { align-items: center; gap: 10px; text-transform: none; letter-spacing: .02em; font-size: 12px; }
-/* While the SOS banner is up, the side buttons move below it. */
-body.sos-on #fabs { top: calc(140px + env(safe-area-inset-top)); }
+
 #sosbanner #sostext { flex: 1; }
 #sosbanner .jl-btn { flex: none; }   /* never more than three lines over the map; tap for the first case */
 @keyframes jl-pulse {

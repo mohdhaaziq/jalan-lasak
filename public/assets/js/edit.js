@@ -62,7 +62,7 @@ export function mountEditing(core) {
   async function deletePoint(id) {
     const point = state.points.find((p) => p.id === id);
     if (!point) return;
-    const ok = await askConfirm({ title: 'Padam checkpoint?', body: point.name, okLabel: 'Padam' });
+    const ok = await askConfirm({ title: 'Padam checkpoint?', body: point.name, okLabel: 'Padam checkpoint', cancelLabel: 'Jangan padam' });
     if (!ok) return;
     state.points = state.points.filter((p) => p.id !== id);
     if (core.getTarget() === id) {
@@ -346,7 +346,7 @@ export function mountEditing(core) {
   async function deleteRoute(id) {
     const route = state.routes.find((r) => r.id === id);
     if (!route) return;
-    const ok = await askConfirm({ title: 'Padam laluan?', body: route.name, okLabel: 'Padam' });
+    const ok = await askConfirm({ title: 'Padam laluan?', body: route.name, okLabel: 'Padam laluan', cancelLabel: 'Jangan padam' });
     if (!ok) return;
     state.routes = state.routes.filter((r) => r.id !== id);
     core.changed();

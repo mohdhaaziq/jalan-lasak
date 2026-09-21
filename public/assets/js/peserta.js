@@ -448,7 +448,12 @@ function syncSOS() {
 
 btnSOS.addEventListener('click', async () => {
   if (reporter.isSOS()) {
-    const ok = await askConfirm({ title: 'Batalkan SOS?', body: 'Pusat kawalan akan dimaklumkan yang keadaan sudah selamat.', okLabel: 'Batalkan SOS' });
+    const ok = await askConfirm({
+      title: 'Batalkan SOS?',
+      body: 'Pusat kawalan akan dimaklumkan yang keadaan sudah selamat.',
+      okLabel: 'Ya, keadaan selamat',
+      cancelLabel: 'Kekalkan SOS'          // never a second button that also reads "batal"
+    });
     if (!ok) return;
     sosAt = null;
     sosSmsOffered = false;
@@ -459,7 +464,8 @@ btnSOS.addEventListener('click', async () => {
   const ok = await askConfirm({
     title: 'Hantar SOS?',
     body: 'Lokasi telefon ini dihantar serta-merta dan ditanda SOS di pusat kawalan — melalui internet, atau melalui SMS jika tiada talian data. Gunakan bila ada kecemasan sebenar.',
-    okLabel: 'Hantar SOS'
+    okLabel: 'Hantar SOS',
+    cancelLabel: 'Jangan hantar'
   });
   if (!ok) return;
   sosAt = Date.now();

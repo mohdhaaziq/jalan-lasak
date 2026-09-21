@@ -227,7 +227,8 @@ async function deleteGroup(id) {
   const ok = await askConfirm({
     title: 'Padam kumpulan?',
     body: g.name + ' — telefon kumpulan ini akan diminta masuk semula, dan kedudukannya tidak lagi dipaparkan.',
-    okLabel: 'Padam'
+    okLabel: 'Padam kumpulan',
+    cancelLabel: 'Jangan padam'
   });
   if (!ok) return;
   state.groups = state.groups.filter((x) => x.id !== id);
@@ -1000,13 +1001,24 @@ function renderAlert(statuses) {
     alertBar.style.display = 'none';
     return;
   }
-  alertText.textContent = parts.join(' | ');
+  // The most urgent line stays readable; the rest are one tap away.
+  alertText.textContent = parts.join('   ·   ');
+  alertText.title = parts.join('\n');
+  $('btnAlertMore').hidden = parts.length < 2;
+  $('btnAlertMore').textContent = alertBar.classList.contains('open') ? 'Tutup' : '+' + (parts.length - 1);
+  if (parts.length < 2) alertBar.classList.remove('open');
   alertBar.style.display = 'flex';
   if (lateBad && !alarm.ringing() && Date.now() - lastBeep > 60 * 1000) {
     beep();
     lastBeep = Date.now();
   }
 }
+
+$('btnAlertMore').addEventListener('click', () => {
+  alertBar.classList.toggle('open');
+  renderPositions();                       // refreshes the chip's label
+  setTimeout(() => map.invalidateSize({ pan: false }), 60);
+});
 
 alertText.addEventListener('click', () => {
   const g = positions.find((x) => x.last && x.last.sos) ||
