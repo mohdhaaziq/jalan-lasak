@@ -9,6 +9,8 @@ import { getState, postCheckins, getPositions } from './api.js';
 import { loadState, saveState, loadMarshal, saveMarshal, loadCheckinQueue, saveCheckinQueue, deviceId, loadPrefs, savePrefs } from './store.js';
 import { askText, askChoice, askConfirm, notify, toast } from './ui.js';
 import { LAYERS, isStart, groupLabel, keepPopupClear } from './core.js';
+import { clearTiles } from './offline.js';
+import { createAutoCache, autoStatusText } from './autocache.js';
 import { distM, fmtDist } from './geo.js';
 import { scheduleFor, paceEstimate, paceLabel } from './schedule.js';
 import { mountTabs } from './tabs.js';
@@ -55,8 +57,10 @@ async function syncState() {
     state.routes = next.routes || [];
     state.groups = next.groups;
     state.settings = next.settings || {};
+    state.area = next.area && typeof next.area === 'object' ? next.area : state.area || null;
     saveState(state);
     drawProgram();
+    autoCache.kick();
     return true;
   } catch {
     return false;
@@ -108,14 +112,64 @@ document.querySelectorAll('#layers button').forEach((button) => button.addEventL
   prefs.base = key;
   savePrefs(prefs);
   syncLayerUI();
+  autoCache.kick();
 }));
 $('contourrow').addEventListener('click', () => {
   prefs.contour = !prefs.contour;
   if (prefs.contour) contourOverlay.addTo(map); else map.removeLayer(contourOverlay);
   savePrefs(prefs);
   syncLayerUI();
+  autoCache.kick();
 });
 syncLayerUI();
+
+/* — offline map: the program area saves itself, as on the participant phone — */
+let autoStatus = { phase: 'waiting' };
+function programBounds() {
+  const a = state.area;
+  if (a && Number.isFinite(a.south)) return L.latLngBounds([a.south, a.west], [a.north, a.east]);
+  if (!state.points.length) return null;
+  return L.latLngBounds(state.points.map((p) => [p.lat, p.lng])).pad(0.25);
+}
+function activeSources() {
+  const sources = [LAYERS[currentBase]];
+  if (prefs.contour && currentBase !== 'topo') sources.push({ ...LAYERS.topo });
+  return sources;
+}
+const autoCache = createAutoCache({
+  getBounds: programBounds,
+  getSources: activeSources,
+  onStatus: (status) => {
+    autoStatus = status;
+    const running = status.phase === 'running';
+    $('offbar').classList.toggle('on', running);
+    if (running && status.total) $('offbarfill').style.width = Math.round(status.done / status.total * 100) + '%';
+    $('btnCache').disabled = running;
+    $('btnCacheClear').disabled = running;
+    $('offstat').textContent = autoStatusText(status);
+    netUI();
+  }
+});
+$('btnCache').addEventListener('click', () => {
+  if (!navigator.onLine) {
+    notify({ title: 'Tiada talian', body: 'Muat turun akan bersambung sendiri bila ada isyarat.' });
+    return;
+  }
+  autoCache.kick(true);
+});
+$('btnCacheClear').addEventListener('click', async () => {
+  const ok = await askConfirm({
+    title: 'Kosongkan peta offline?',
+    body: 'Semua tile yang disimpan akan dibuang. Peta kawasan akan dimuat turun semula sendiri bila app dibuka lagi.',
+    okLabel: 'Kosongkan'
+  });
+  if (!ok) return;
+  await clearTiles();
+  autoStatus = { phase: 'waiting' };
+  $('offstat').textContent = 'Tile dikosongkan';
+  toast('Tile dikosongkan.');
+});
+autoCache.kick();
 
 // Keep the map drawn to its box as the panel opens, closes or the screen changes, and frame the program once.
 let framed = false;
@@ -471,7 +525,10 @@ function render() {
 function netUI() {
   const off = !navigator.onLine;
   $('netdot').classList.toggle('off', off);
-  $('netlabel').textContent = off ? 'Offline' : 'Online';
+  const loading = !off && autoStatus.phase === 'running' && autoStatus.total;
+  $('netlabel').textContent = off ? 'Offline'
+    : loading ? `Peta ${Math.round(autoStatus.done / autoStatus.total * 100)}%`
+    : 'Online';
 }
 window.addEventListener('online', netUI);
 window.addEventListener('offline', netUI);

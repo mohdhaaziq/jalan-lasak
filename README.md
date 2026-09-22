@@ -10,7 +10,7 @@ peranan:
 | Daftar masuk | — | catat setiap kumpulan yang tiba di CP-nya | catat sendiri (dari radio), lihat semua |
 | Jadual | lihat jangkaan tiba | — | tetapkan; amaran bila kumpulan **lewat** |
 | Kecemasan | butang **SOS**, sandaran **SMS** | — | amaran merah, bunyi & getar; masuk SMS secara manual |
-| Peta offline | ya — satu butang simpan **seluruh kawasan program** pada zum paling dalam yang muat | tile yang pernah dilihat sahaja | ya |
+| Peta offline | ya — **automatik**: seluruh kawasan program pada zum paling dalam yang muat dimuat turun sendiri sebaik ada talian | ya, automatik juga | ya |
 
 Satu telefon setiap kumpulan: ketua kumpulan buka app, masuk sekali dengan
 **PIN 6 digit kumpulannya** (dijana rawak oleh pelayan bila pusat kawalan
@@ -207,7 +207,7 @@ mesti diuji di lokasi sebelum program.
 5. Setiap marshal buka `/marshal.html` di telefonnya semasa ada talian,
    masukkan PIN, pilih checkpoint-nya.
 6. Setiap ketua kumpulan buka `/` di telefonnya semasa masih ada talian,
-   masuk dengan PIN kumpulannya dan tekan **Simpan kawasan ini** untuk peta offline
+   masuk dengan PIN kumpulannya dan biarkan app terbuka seketika: peta kawasan dimuat turun sendiri
    (seluruh kawasan program, zum paling dalam yang muat dalam ± 70 MB). Skrin
    kekal hidup sendiri selagi app terbuka. Tambah ke skrin utama (*Add to Home Screen*).
 7. Bila kumpulan bertolak: marshal di MULA tekan *Tiba* untuk kumpulan itu
@@ -250,6 +250,7 @@ public/                 laman statik (Cloudflare Pages)
   assets/js/tabs.js     navbar bawah (peserta dan pusat kawalan)
   assets/js/lock.js     buka kunci checkpoint dengan kod (AES-GCM, PBKDF2)
   assets/js/offline.js  simpan tile kawasan
+  assets/js/autocache.js muat turun kawasan program sendiri bila ada talian, sambung bila terputus
   vendor/               Leaflet 1.9.4 + fon Archivo + qrcode-generator (self-hosted)
 functions/api/[[route]].js   API — satu Pages Function
 schema.sql              jadual D1
@@ -283,8 +284,8 @@ Melayu dan dipaparkan terus dalam app.
 
 | Cache | Isi | Dibuang bila |
 | --- | --- | --- |
-| `jl-shell-v40` | fail app + salinan terakhir `/api/state` | versi baharu digunakan |
-| `jl-tiles-v1` | tile yang **sengaja** disimpan | hanya melalui butang *Kosongkan* |
+| `jl-shell-v41` | fail app + salinan terakhir `/api/state` | versi baharu digunakan |
+| `jl-tiles-v1` | tile kawasan program, dimuat turun **sendiri** oleh `autocache.js` | hanya melalui butang *Kosongkan* |
 | `jl-tiles-auto-v1` | tile yang terpapar semasa melayari | automatik, melebihi 1500 tile |
 
 Fail app dilayan **network-first**, jadi perubahan yang di-deploy muncul pada

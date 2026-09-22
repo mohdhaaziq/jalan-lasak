@@ -14,7 +14,8 @@ export function cardinal(deg) {
 }
 import { DEFAULT_POINTS, loadState, saveState, loadTarget, saveTarget, loadPrefs, savePrefs } from './store.js';
 import { notify, toast, askConfirm } from './ui.js';
-import { planTiles, precacheTiles, cachedTileCount, clearTiles, approxSize, deepestZoom } from './offline.js';
+import { cachedTileCount, clearTiles, approxSize } from './offline.js';
+import { createAutoCache, autoStatusText } from './autocache.js';
 import { etaLabel } from './schedule.js';
 
 export const $ = (id) => document.getElementById(id);
@@ -189,6 +190,7 @@ export function boot({ editable = false } = {}) {
     prefs.base = key;
     savePrefs(prefs);
     syncLayerButtons();
+    autoCache.kick();
   }
 
   function syncLayerButtons() {
@@ -215,6 +217,7 @@ export function boot({ editable = false } = {}) {
     else map.removeLayer(contourOverlay);
     savePrefs(prefs);
     syncContour();
+    autoCache.kick();
   });
   syncContour();
 
@@ -728,16 +731,19 @@ export function boot({ editable = false } = {}) {
   }
   $('btnFit').addEventListener('click', () => { releaseFollow(); fitAll(hooks.fitExtra ? hooks.fitExtra() : []); });
 
-  /* ── peta offline ───────────────────────────────────────────────────── */
+  /* ── peta offline: the program area saves itself ─────────────────── */
 
   const btnCache = $('btnCache');
   const btnCacheClear = $('btnCacheClear');
   const offStat = $('offstat');
   const offBar = $('offbar');
   const offBarFill = $('offbarfill');
+  let autoStatus = { phase: 'waiting' };
 
   async function refreshOfflineStatus() {
+    if (autoStatus.phase === 'running') return;
     const count = await cachedTileCount();
+    if (autoStatus.phase === 'done') return;   // the auto-cache line says more
     offStat.textContent = count
       ? `${count} tile disimpan · ± ${approxSize(count)}`
       : 'Belum ada tile disimpan';
@@ -761,71 +767,50 @@ export function boot({ editable = false } = {}) {
     return L.latLngBounds(state.points.map((p) => [p.lat, p.lng])).pad(0.25);
   }
 
-  const OFFLINE_ZMIN = 11;          // an overview of the district
-  const OFFLINE_TILE_BUDGET = 3500; // ≈ 70 MB; the deepest zoom is chosen to fit this
+  // Downloads start on their own as soon as the area is known and there is a
+  // line: nobody has to remember a button before walking out of signal. The
+  // chosen base layer (and contour, if on) is what gets saved; switching
+  // layers saves the new one too.
+  let announced = false;
+  const autoCache = createAutoCache({
+    getBounds: programBounds,
+    getSources: activeSources,
+    onStatus: (status) => {
+      autoStatus = status;
+      const running = status.phase === 'running';
+      offBar.classList.toggle('on', running);
+      if (running && status.total) offBarFill.style.width = Math.round(status.done / status.total * 100) + '%';
+      btnCache.disabled = running;
+      btnCacheClear.disabled = running;
+      offStat.textContent = autoStatusText(status);
+      netUI();
+      if (status.phase === 'done' && status.saved > 100 && !announced) {
+        announced = true;
+        toast('Peta kawasan program siap disimpan untuk offline.');
+      }
+      if (status.phase === 'done' || status.phase === 'failed') refreshOfflineStatus();
+    }
+  });
 
-  btnCache.addEventListener('click', async () => {
-    if (!('caches' in window)) {
-      notify({ title: 'Tidak disokong', body: 'Pelayar ini tidak menyokong storan peta offline.' });
+  btnCache.addEventListener('click', () => {
+    if (!navigator.onLine) {
+      notify({ title: 'Tiada talian', body: 'Muat turun akan bersambung sendiri bila ada isyarat.' });
       return;
     }
     const bounds = programBounds();
-    if (!bounds) {
-      notify({ title: 'Tiada kawasan', body: 'Peta program belum dimuat turun. Cuba bila ada isyarat.' });
-      return;
-    }
-    // Always the program area, never whatever happens to be on screen, and
-    // as deep as the tile budget allows — trail detail matters more than reach.
-    const sources = activeSources();
-    const zMin = OFFLINE_ZMIN;
-    const zMax = deepestZoom(bounds, zMin, sources, OFFLINE_TILE_BUDGET);
-    const urls = planTiles(bounds, zMin, zMax, sources);
-
-    if (!urls.length) {
-      notify({ title: 'Tiada tile', body: 'Tiada apa untuk disimpan bagi kawasan ini.' });
-      return;
-    }
-    const ok = await askConfirm({
-      title: 'Simpan peta kawasan program?',
-      body: `Seluruh kawasan checkpoint dan laluan, zum ${zMin}–${zMax} (paling dalam yang muat), lapisan ${LAYERS[currentBase].label}${sources.length > 1 ? ' + kontur' : ''} — ${urls.length} tile, lebih kurang ${approxSize(urls.length)}. Perlukan talian sekarang.`,
-      okLabel: 'Simpan'
-    });
-    if (!ok) return;
-    map.fitBounds(bounds, { padding: [10, 10] });
-
-    btnCache.disabled = true;
-    btnCacheClear.disabled = true;
-    offBar.classList.add('on');
-    offBarFill.style.width = '0%';
-
-    try {
-      const stats = await precacheTiles(urls, {
-        onProgress: ({ done, total }) => {
-          offBarFill.style.width = Math.round(done / total * 100) + '%';
-          offStat.textContent = `Memuat turun ${done}/${total}`;
-        }
-      });
-      toast(stats.failed
-        ? `Selesai — ${stats.saved} tile disimpan, ${stats.failed} gagal.`
-        : `Selesai — ${stats.saved} tile disimpan.`);
-    } catch {
-      toast('Gagal menyimpan tile.');
-    } finally {
-      btnCache.disabled = false;
-      btnCacheClear.disabled = false;
-      offBar.classList.remove('on');
-      refreshOfflineStatus();
-    }
+    if (bounds) map.fitBounds(bounds, { padding: [10, 10] });
+    autoCache.kick(true);
   });
 
   btnCacheClear.addEventListener('click', async () => {
     const ok = await askConfirm({
       title: 'Kosongkan peta offline?',
-      body: 'Semua tile yang disimpan akan dibuang. Checkpoint dan laluan tidak terjejas.',
+      body: 'Semua tile yang disimpan akan dibuang. Peta kawasan akan dimuat turun semula sendiri bila app dibuka lagi. Checkpoint dan laluan tidak terjejas.',
       okLabel: 'Kosongkan'
     });
     if (!ok) return;
     await clearTiles();
+    autoStatus = { phase: 'waiting' };
     toast('Tile dikosongkan.');
     refreshOfflineStatus();
   });
@@ -835,7 +820,10 @@ export function boot({ editable = false } = {}) {
   function netUI() {
     const off = !navigator.onLine;
     $('netdot').classList.toggle('off', off);
-    $('netlabel').textContent = off ? 'Offline' : 'Online';
+    const loading = !off && autoStatus.phase === 'running' && autoStatus.total;
+    $('netlabel').textContent = off ? 'Offline'
+      : loading ? `Peta ${Math.round(autoStatus.done / autoStatus.total * 100)}%`
+      : 'Online';
   }
   window.addEventListener('online', netUI);
   window.addEventListener('offline', netUI);
@@ -899,6 +887,7 @@ export function boot({ editable = false } = {}) {
     }
     saveState(state);
     rerender();
+    autoCache.kick();
   }
 
   /* ── init ───────────────────────────────────────────────────────────── */
@@ -906,6 +895,7 @@ export function boot({ editable = false } = {}) {
   rerender();
   fitAll();
   refreshOfflineStatus();
+  autoCache.kick();
   setInterval(updateStrip, 3000);
 
   return {
