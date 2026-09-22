@@ -29,7 +29,7 @@
 
    Routes
      GET  /api/state              { version, points, routes, groups, settings, area, progress?, locked? }
-                                  points carry `code` for CC / marshal only
+                                  points carry `code` and `etaMin` for CC / marshal only
                                   CC key / marshal PIN: all points · X-Group-Pin: revealed points · else MULA only
      PUT  /api/state              { points, routes:[{id,name,latlngs,from?,to?}] } → { version }   CC
      PUT  /api/groups             { groups }  → { version, groups:[{id,pin}] }    CC
@@ -319,9 +319,10 @@ async function getState(request, env) {
   // Routes are a command-centre tool (pace estimates, briefing marshals);
   // participant phones never receive them.
   let routesOut = routeList;
-  // Only the command centre and marshals ever see codes; a participant's
-  // phone gets the hidden points locked behind them instead.
-  const strip = (p) => ({ ...p, code: undefined });
+  // Only the command centre and marshals see a point's code and its place in
+  // the schedule: a participant is meant to find the way and the pace, so the
+  // expected time is not sent to their phone either.
+  const strip = (p) => ({ ...p, code: undefined, etaMin: undefined });
   let points;
   let progress;
   let locked;
