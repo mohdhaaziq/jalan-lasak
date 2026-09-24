@@ -237,6 +237,73 @@ export function boot({ editable = false } = {}) {
     });
   }
 
+  /* ── the editing lock ─────────────────────────────────────────────────
+     A checkpoint dragged by a stray thumb moves the whole program, so the
+     command centre opens locked: markers do not drag, and every edit first
+     asks hooks.unlock (the marshal PIN, in edit.js). Unlocking lasts until
+     the padlock is pressed again, the page reloads, or 15 minutes pass. */
+
+  const LOCK_AFTER_MS = 15 * 60 * 1000;
+  let locked = editable;
+  let relockTimer = null;
+
+  function applyLock() {
+    for (const marker of Object.values(markers)) {
+      if (!marker.dragging) continue;
+      if (locked) marker.dragging.disable(); else marker.dragging.enable();
+    }
+    const fab = $('btnLock');
+    if (fab) {
+      fab.classList.toggle('on', !locked);
+      fab.setAttribute('aria-pressed', String(!locked));
+      fab.title = locked ? 'Terkunci — tekan untuk buka dengan PIN' : 'Terbuka — tekan untuk kunci';
+      fab.setAttribute('aria-label', fab.title);
+    }
+    const hint = $('edithint');
+    if (hint) {
+      hint.textContent = locked
+        ? 'Terkunci: tekan mangga di peta dan masukkan PIN marshal untuk alih, tambah atau padam checkpoint'
+        : 'Terbuka: tekan lama peta untuk tambah · seret penanda untuk alih · ketik penanda untuk nama, koordinat, masa, padam';
+    }
+    document.body.classList.toggle('edit-open', editable && !locked);
+  }
+
+  function lock() {
+    if (!editable || locked) return;
+    locked = true;
+    clearTimeout(relockTimer);
+    relockTimer = null;
+    map.closePopup();
+    applyLock();
+    if (hooks.lockChange) hooks.lockChange(true);
+  }
+
+  /** True once editing is allowed — asking for the PIN if it is not yet. */
+  async function ensureUnlocked() {
+    if (!editable) return false;
+    if (!locked) return true;
+    if (!hooks.unlock) return false;
+    const ok = await hooks.unlock();
+    if (!ok) return false;
+    locked = false;
+    clearTimeout(relockTimer);
+    relockTimer = setTimeout(() => { lock(); toast('Penyuntingan dikunci semula selepas 15 minit.'); }, LOCK_AFTER_MS);
+    applyLock();
+    if (hooks.lockChange) hooks.lockChange(false);
+    return true;
+  }
+
+  const btnLock = $('btnLock');
+  if (btnLock) {
+    btnLock.addEventListener('click', () => {
+      if (locked) ensureUnlocked().then((ok) => { if (ok) toast('Penyuntingan dibuka. Tekan mangga untuk kunci semula.', 4000); });
+      else { lock(); toast('Penyuntingan dikunci.'); }
+    });
+  }
+
+  /** An edit handler that first clears the lock. */
+  const guarded = (fn) => async (...args) => { if (await ensureUnlocked()) return fn(...args); };
+
   /**
    * The popup, grouped the way the actions differ: what this point is, the one
    * thing anyone does with it (aim the compass), the edits, and — kept apart
@@ -265,15 +332,16 @@ export function boot({ editable = false } = {}) {
     wrap.append(primary);
 
     if (editable) {
+      if (locked) wrap.append(el('div', 'pop-lock', 'Terkunci · edit akan minta PIN marshal'));
       const edits = el('div', 'pop-edit');
-      edits.append(button('Nama', '', () => hooks.rename && hooks.rename(point.id)));
-      edits.append(button('Koordinat', '', () => hooks.coords && hooks.coords(point.id)));
-      if (!isStart(point)) edits.append(button('Masa', '', () => hooks.eta && hooks.eta(point.id)));
+      edits.append(button('Nama', '', guarded(() => hooks.rename && hooks.rename(point.id))));
+      edits.append(button('Koordinat', '', guarded(() => hooks.coords && hooks.coords(point.id))));
+      if (!isStart(point)) edits.append(button('Masa', '', guarded(() => hooks.eta && hooks.eta(point.id))));
       wrap.append(edits);
 
       if (!isStart(point)) {
         const danger = el('div', 'pop-danger');
-        danger.append(button('Padam checkpoint', 'danger', () => hooks.remove && hooks.remove(point.id)));
+        danger.append(button('Padam checkpoint', 'danger', guarded(() => hooks.remove && hooks.remove(point.id))));
         wrap.append(danger);
       }
     }
@@ -306,6 +374,7 @@ export function boot({ editable = false } = {}) {
         });
       }
       marker.addTo(map);
+      if (locked && marker.dragging) marker.dragging.disable();
       markers[point.id] = marker;
     });
     renderPointList();
@@ -332,7 +401,7 @@ export function boot({ editable = false } = {}) {
           const actions = el('div', 'pop-actions');
           const del = el('button', 'jl-btn sm', 'Padam');
           del.type = 'button';
-          del.addEventListener('click', () => hooks.removeRoute && hooks.removeRoute(route.id));
+          del.addEventListener('click', guarded(() => hooks.removeRoute && hooks.removeRoute(route.id)));
           actions.append(del);
           wrap.append(actions);
         }
@@ -683,7 +752,7 @@ export function boot({ editable = false } = {}) {
         del.type = 'button';
         del.addEventListener('click', (event) => {
           event.stopPropagation();
-          if (hooks.removeRoute) hooks.removeRoute(route.id);
+          guarded(() => hooks.removeRoute && hooks.removeRoute(route.id))();
         });
         row.append(del);
       }
@@ -893,6 +962,7 @@ export function boot({ editable = false } = {}) {
   /* ── init ───────────────────────────────────────────────────────────── */
 
   rerender();
+  applyLock();
   fitAll();
   refreshOfflineStatus();
   autoCache.kick();
@@ -901,6 +971,9 @@ export function boot({ editable = false } = {}) {
   return {
     L, map, state, hooks, markers, routeLayers,
     editable,
+    isLocked: () => locked,
+    ensureUnlocked,
+    lock,
     getTarget: () => targetId,
     setTarget,
     myPos: () => myPos,

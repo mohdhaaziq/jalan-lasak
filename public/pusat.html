@@ -54,6 +54,9 @@
       </span>
     </div>
     <div id="fabs">
+      <button type="button" class="fab" id="btnLock" title="Terkunci — tekan untuk buka dengan PIN" aria-label="Terkunci — tekan untuk buka dengan PIN" aria-pressed="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="5" y="11" width="14" height="10"/><path class="shackle" d="M8 11V7a4 4 0 0 1 8 0v4"/><path class="shackle-open" d="M8 11V7a4 4 0 0 1 8 0"/></svg>
+      </button>
       <button type="button" class="fab" id="btnLocate" title="Lokasi saya" aria-label="Lokasi saya" aria-pressed="false">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="8"/></svg>
       </button>
@@ -112,7 +115,7 @@
       </section>
 
       <section class="pane" id="pane-checkpoint" role="tabpanel" aria-labelledby="tab-checkpoint" hidden>
-        <div class="stat pad top">Tekan lama peta untuk tambah · seret penanda untuk alih · ketik penanda untuk nama, koordinat, masa, padam</div>
+        <div class="stat pad top" id="edithint">Terkunci: tekan mangga di peta dan masukkan PIN marshal untuk alih, tambah atau padam checkpoint</div>
         <div class="acts pad">
           <button type="button" class="jl-btn" id="btnAddCoords">Tambah dari koordinat</button>
         </div>

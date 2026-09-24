@@ -5,9 +5,60 @@
 import { pathKm, distM, fmtDist } from './geo.js';
 import { askText, askChoice, askConfirm, notify, toast } from './ui.js';
 import { $, isStart, routeLabel } from './core.js';
+import { getState } from './api.js';
 
 export function mountEditing(core) {
   const { L, map, state } = core;
+
+  /* ── the lock: the marshal PIN opens editing ────────────────────────── */
+
+  const HASH_KEY = 'jl-lock-hash';
+
+  async function sha256(text) {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+    return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  /**
+   * The server decides whether the PIN is right. Without a line, the PIN
+   * that last opened the lock on this phone (kept as a hash) still does,
+   * so a stray drag can be undone in the field too.
+   */
+  async function verifyPin(pin) {
+    try {
+      await getState({ pin });
+      try { localStorage.setItem(HASH_KEY, await sha256(pin)); } catch { /* no storage */ }
+      return true;
+    } catch (error) {
+      if (error && error.status === 401) return false;
+      let stored = null;
+      try { stored = localStorage.getItem(HASH_KEY); } catch { /* no storage */ }
+      if (!stored) return null;
+      return (await sha256(pin)) === stored;
+    }
+  }
+
+  core.hooks.unlock = async () => {
+    const pin = await askText({
+      title: 'Buka kunci penyuntingan',
+      body: 'Masukkan PIN marshal untuk alih, tambah atau padam checkpoint dan laluan. Kunci tertutup semula selepas 15 minit, atau bila mangga ditekan.',
+      label: 'PIN marshal',
+      type: 'password',
+      inputMode: 'numeric',
+      okLabel: 'Buka kunci'
+    });
+    if (pin === null) return false;
+    const ok = await verifyPin(pin.trim());
+    if (ok === null) {
+      notify({ title: 'Tidak dapat semak PIN', body: 'Tiada talian, dan PIN belum pernah disahkan pada telefon ini. Cuba bila ada isyarat.' });
+      return false;
+    }
+    if (!ok) {
+      toast('PIN marshal salah.');
+      return false;
+    }
+    return true;
+  };
 
   /* ── add / rename / delete checkpoints ──────────────────────────────── */
 
@@ -23,7 +74,10 @@ export function mountEditing(core) {
     if (on) setDrawMode(false);
   }
 
-  btnAdd.addEventListener('click', () => setAddMode(!addMode));
+  btnAdd.addEventListener('click', async () => {
+    if (addMode) { setAddMode(false); return; }
+    if (await core.ensureUnlocked()) setAddMode(true);
+  });
 
   async function addPointAt(latlng) {
     const suggested = 'Checkpoint ' + (state.points.filter((p) => !isStart(p)).length + 1);
@@ -182,7 +236,7 @@ export function mountEditing(core) {
   }
 
   const btnAddCoords = $('btnAddCoords');
-  if (btnAddCoords) btnAddCoords.addEventListener('click', addByCoords);
+  if (btnAddCoords) btnAddCoords.addEventListener('click', async () => { if (await core.ensureUnlocked()) addByCoords(); });
 
   async function setEta(id) {
     const point = state.points.find((p) => p.id === id);
@@ -292,6 +346,7 @@ export function mountEditing(core) {
       setDrawMode(false);
       return;
     }
+    if (!(await core.ensureUnlocked())) return;
     const from = await chooseStart();
     if (!from) return;
     setDrawMode(true);
@@ -369,7 +424,9 @@ export function mountEditing(core) {
       addPointAt(latlng);
     }
   };
-  core.hooks.mapHold = (latlng) => { if (!drawMode) addPointAt(latlng); };
+  core.hooks.mapHold = async (latlng) => { if (!drawMode && await core.ensureUnlocked()) addPointAt(latlng); };
+
+  core.hooks.lockChange = (isLocked) => { if (isLocked) { setAddMode(false); setDrawMode(false); } };
 
   // Popups and route rows are built lazily by the core, so they pick up the
   // hooks above; anything already on screen just needs one redraw.

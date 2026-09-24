@@ -57,6 +57,16 @@ telefon kumpulan ──POST /api/positions──▶ ┌────────�
   > 10 minit ditanda, > 20 minit merah; SOS diletak paling atas dengan
   amaran berbunyi, dan kekal sehingga telefon itu membatalkannya.
 
+### Penyuntingan berkunci di pusat kawalan
+
+Halaman pusat kawalan dibuka **terkunci**: penanda checkpoint tidak boleh
+diseret, dan setiap suntingan (tambah, alih, nama, koordinat, masa, padam,
+lukis laluan) meminta **PIN marshal** dahulu melalui mangga di peta. PIN
+disemak pada pelayan; PIN yang pernah disahkan pada telefon itu disimpan
+sebagai hash supaya kunci masih boleh dibuka tanpa talian. Kunci tertutup
+semula bila mangga ditekan, selepas 15 minit, atau bila halaman dimuat semula.
+Ini menghalang checkpoint teralih oleh sentuhan tidak sengaja semasa program.
+
 ### Checkpoint didedahkan satu persatu
 
 Telefon peserta hanya menerima MULA, checkpoint yang sudah dicapai
@@ -237,7 +247,7 @@ public/                 laman statik (Cloudflare Pages)
   assets/css/modernist.css  sistem reka bentuk (token + komponen)
   assets/css/app.css    chrome app, dibina atas token tersebut
   assets/js/core.js     peta, lapisan, marker, laluan, strip kompas, senarai, peta offline
-  assets/js/edit.js     alat suntingan (pusat kawalan sahaja)
+  assets/js/edit.js     alat suntingan (pusat kawalan sahaja); kunci penyuntingan dibuka dengan PIN marshal
   assets/js/peserta.js  peranan peserta: kumpulan, pelapor, SOS, wake lock
   assets/js/pusat.js    peranan pusat kawalan: kunci, kumpulan, jadual, kedudukan, amaran
   assets/js/marshal.js  peranan marshal: PIN, checkpoint, daftar masuk + giliran offline
@@ -284,7 +294,7 @@ Melayu dan dipaparkan terus dalam app.
 
 | Cache | Isi | Dibuang bila |
 | --- | --- | --- |
-| `jl-shell-v41` | fail app + salinan terakhir `/api/state` | versi baharu digunakan |
+| `jl-shell-v42` | fail app + salinan terakhir `/api/state` | versi baharu digunakan |
 | `jl-tiles-v1` | tile kawasan program, dimuat turun **sendiri** oleh `autocache.js` | hanya melalui butang *Kosongkan* |
 | `jl-tiles-auto-v1` | tile yang terpapar semasa melayari | automatik, melebihi 1500 tile |
 

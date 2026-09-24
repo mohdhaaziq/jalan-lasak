@@ -97,6 +97,11 @@ body:has(#mcard) .leaflet-bottom.leaflet-left { bottom: 74px; }
 .fab.follow { background: var(--jl-gps); border-color: var(--jl-gps); color: #fff; }
 .fab.free { border-color: var(--jl-gps); color: var(--jl-gps); }
 .fab svg { width: 22px; height: 22px; }
+/* The padlock: closed shackle while locked, sprung open (accent) while editing is allowed. */
+#btnLock .shackle-open { display: none; }
+#btnLock.on .shackle { display: none; }
+#btnLock.on .shackle-open { display: block; }
+.pop-lock { font-size: 11px; letter-spacing: .04em; color: var(--jl-muted); margin: 6px 0 2px; }
 
 /* ── mode banners over the map ───────────────────────────────────────── */
 /* Banners sit in the column above the map, so nothing they say ever covers it
