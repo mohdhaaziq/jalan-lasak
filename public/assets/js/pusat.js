@@ -246,23 +246,8 @@ async function startGroup(id, on) {
   toast(on ? g.name + ' bertolak ' + clock(Date.now()) : 'Masa mula ' + g.name + ' dibuang.');
 }
 
-$('btnStartAll').addEventListener('click', async () => {
-  const waiting = state.groups.filter((g) => !Number.isFinite(g.startedAt));
-  if (!waiting.length) {
-    toast('Semua kumpulan sudah bertolak.');
-    return;
-  }
-  const ok = await askConfirm({
-    title: 'Mula semua sekarang?',
-    body: waiting.length + ' kumpulan yang belum bertolak akan dicatat bertolak pada ' + clock(Date.now()) + '.',
-    okLabel: 'Mula semua'
-  });
-  if (!ok) return;
-  const now = Date.now();
-  const starts = {};
-  waiting.forEach((g) => { starts[g.id] = now; });
-  await saveGroups(starts);
-});
+// Groups are released one at a time, each from the Mula button on its own
+// row; a "start all" button was pressed by mistake, so there is none.
 
 function renderGroups() {
   const wrap = $('grouplist');

@@ -114,7 +114,7 @@ talian:
 1. **Jadual dan amaran lewat.** Setiap checkpoint ada "+N minit dari mula"
    (butang *Masa* pada checkpoint di pusat kawalan). Masa mula direkod
    **setiap kumpulan** — oleh marshal di MULA yang menanda "bertolak", atau
-   butang *Mula* / *Mula semua* di pusat kawalan — jadi bertolak berperingkat
+   butang *Mula* pada baris kumpulan itu di pusat kawalan — jadi bertolak berperingkat
    dikira betul. Kumpulan yang belum sampai ke CP yang dijangka **lewat**
    dinaikkan ke atas senarai; lewat ≥ 15 minit menjadi amaran berbunyi, walaupun
    telefonnya senyap: *"LEWAT Kumpulan 3 · CP2 dijangka 11:30 · 25 min ·
@@ -221,7 +221,7 @@ mesti diuji di lokasi sebelum program.
    (seluruh kawasan program, zum paling dalam yang muat dalam ± 70 MB). Skrin
    kekal hidup sendiri selagi app terbuka. Tambah ke skrin utama (*Add to Home Screen*).
 7. Bila kumpulan bertolak: marshal di MULA tekan *Tiba* untuk kumpulan itu
-   (mula jam kumpulan), atau pusat kawalan tekan *Mula* / *Mula semua*.
+   (mula jam kumpulan), atau pusat kawalan tekan *Mula* pada baris kumpulan itu.
 
 ### Kembangkan di komputer
 
@@ -294,7 +294,7 @@ Melayu dan dipaparkan terus dalam app.
 
 | Cache | Isi | Dibuang bila |
 | --- | --- | --- |
-| `jl-shell-v42` | fail app + salinan terakhir `/api/state` | versi baharu digunakan |
+| `jl-shell-v43` | fail app + salinan terakhir `/api/state` | versi baharu digunakan |
 | `jl-tiles-v1` | tile kawasan program, dimuat turun **sendiri** oleh `autocache.js` | hanya melalui butang *Kosongkan* |
 | `jl-tiles-auto-v1` | tile yang terpapar semasa melayari | automatik, melebihi 1500 tile |
 
