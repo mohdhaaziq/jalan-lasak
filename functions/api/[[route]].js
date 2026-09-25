@@ -580,13 +580,16 @@ async function getPositions(request, env, url) {
   }
 
   if (trail > 0) {
+    // One pass over the table. The earlier form ran a correlated subquery
+    // per row (N × trail rows read per call, polled every 15 s), which
+    // burned through D1's daily row-read allowance mid-event.
     const rows = await db.prepare(`
-      SELECT group_id, lat, lng, sos, recorded_at FROM positions
-      WHERE id IN (
-        SELECT id FROM positions p2
-        WHERE p2.group_id = positions.group_id
-        ORDER BY recorded_at DESC LIMIT ?
+      SELECT group_id, lat, lng, sos, recorded_at FROM (
+        SELECT group_id, lat, lng, sos, recorded_at,
+               ROW_NUMBER() OVER (PARTITION BY group_id ORDER BY recorded_at DESC, id DESC) AS rn
+        FROM positions
       )
+      WHERE rn <= ?
       ORDER BY group_id, recorded_at
     `).bind(trail).all();
     for (const r of rows.results) {
