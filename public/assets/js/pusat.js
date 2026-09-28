@@ -5,7 +5,7 @@
 
 import { boot, $, el, isStart, groupLabel, cardinal } from './core.js';
 import { mountEditing } from './edit.js';
-import { getState, putState, putGroups, putSettings, getPositions, postPositions, postCheckins, getTrack, getArchive, resetProgram, endProgram } from './api.js';
+import { getState, putState, putGroups, putSettings, getPositions, postPositions, postCheckins, getTrack, endProgram, getPrograms, createProgram, updateProgram, activateProgram } from './api.js';
 import { loadCCKey, saveCCKey, saveState } from './store.js';
 import { askText, askChoice, askConfirm, notify, toast } from './ui.js';
 import { distM, fmtDist, bearing } from './geo.js';
@@ -125,13 +125,35 @@ async function push() {
   }
 }
 
-core.hooks.change = schedulePush;
+/* ── looking back at an earlier program: reads are redirected, writes refused ── */
+let viewing = '';   // a program id while the command centre looks at a past program; '' = the active one
+function readOnly() {
+  if (!viewing) return false;
+  toast('Program lepas: baca sahaja. Tekan Kembali untuk program semasa.');
+  return true;
+}
+function syncViewBanner() {
+  const banner = $('viewbanner');
+  const p = state.settings && state.settings.program;
+  banner.style.display = viewing ? 'flex' : 'none';
+  $('viewtext').textContent = viewing && p ? 'Melihat program lepas: ' + p.name + (p.date ? ', ' + p.date : '') + ' · baca sahaja' : '';
+}
+$('btnViewBack').addEventListener('click', async () => {
+  viewing = '';
+  await pullState();
+  await pollPositions();
+  renderGroups();
+  syncViewBanner();
+});
+
+core.hooks.change = () => { if (readOnly()) return; schedulePush(); };
+core.hooks.readOnly = readOnly;
 window.addEventListener('online', () => { if (dirty) push(); });
 setInterval(() => { if (dirty && !pushing) push(); }, 30 * 1000);
 
 async function pullState() {
   try {
-    const next = await getState({ key });
+    const next = await getState({ key }, viewing);
     if (dirty) return;                  // never overwrite edits still in flight
     const ids = (list) => (list || []).map((x) => x.id).join(',');
     const differs = next.version !== state.version ||
@@ -157,6 +179,7 @@ async function pullState() {
  * when the save went through.
  */
 async function saveGroups(starts = {}, resetPins = []) {
+  if (readOnly()) return;
   const payload = state.groups.map((g) => {
     const item = { id: g.id, name: g.name };
     if (g.id in starts) item.startedAt = starts[g.id];
@@ -290,30 +313,26 @@ function renderGroups() {
     wrap.append(row);
   });
   const s = state.settings || {};
-  $('setstat').textContent = (s.eventName ? 'Program: ' + s.eventName + ' · ' : '') +
-    (s.smsNumber ? 'SMS ke ' + s.smsNumber : 'Nombor SMS belum ditetapkan') +
+  $('setstat').textContent = (s.smsNumber ? 'SMS ke ' + s.smsNumber : 'Nombor SMS belum ditetapkan') +
     ' · ' + (s.hasMarshalPin ? 'PIN marshal ditetapkan' : 'PIN marshal belum ditetapkan');
-  if (s.eventName) document.title = s.eventName + ' — Pusat kawalan';
-  const ended = Number.isFinite(s.endedAt) && s.endedAt;
+  const p = s.program || {};
+  if (p.name) document.title = p.name + ' — Pusat kawalan';
+  const ended = Number.isFinite(p.endedAt) && p.endedAt;
+  $('progname').textContent = p.name || 'Program';
+  $('progmeta').textContent = [p.place, p.date].filter(Boolean).join(' · ') || 'tempat dan tarikh belum diisi';
   $('progstat').textContent = ended
-    ? 'Program tamat ' + new Date(ended).toLocaleString('ms-MY', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) + ' · telefon tidak lagi boleh masuk atau melapor'
-    : 'Program sedang berjalan · telefon boleh masuk dan melapor';
-  $('btnEndProgram').textContent = ended ? 'Buka semula program' : 'Tamatkan program';
+    ? 'Tamat ' + new Date(ended).toLocaleString('ms-MY', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) + ' · telefon tidak lagi boleh masuk atau melapor'
+    : 'Sedang berjalan · telefon boleh masuk dan melapor';
+  $('btnEndProgram').textContent = ended ? 'Buka semula' : 'Tamatkan';
+  $('btnEndProgram').disabled = !!viewing;
+  syncViewBanner();
 }
 
 /* ── settings: SMS number + marshal PIN ─────────────────────────────── */
 
 $('btnSettings').addEventListener('click', async () => {
+  if (readOnly()) return;
   const s = state.settings || {};
-  const eventName = await askText({
-    title: 'Nama program',
-    body: 'Dipaparkan pada tajuk setiap halaman dan dalam arkib. Contoh: Jalan Lasak KKB, 25 Sep 2026.',
-    value: s.eventName || '',
-    placeholder: 'Jalan Lasak …',
-    label: 'Nama',
-    okLabel: 'Seterusnya'
-  });
-  if (eventName === null) return;
   const sms = await askText({
     title: 'Nombor SMS pusat kawalan',
     body: 'Telefon peserta akan hantar SMS ke nombor ini bila data tiada. Kosongkan untuk buang.',
@@ -333,7 +352,7 @@ $('btnSettings').addEventListener('click', async () => {
     okLabel: 'Simpan'
   });
   if (pin === null) return;
-  const payload = { smsNumber: sms, eventName };
+  const payload = { smsNumber: sms };
   if (pin) payload.marshalPin = pin;
   try {
     const result = await withKey(() => putSettings(key, payload));
@@ -347,42 +366,80 @@ $('btnSettings').addEventListener('click', async () => {
   }
 });
 
-/* ── ending a program: keep its record, then start the next ─────────── */
-
-async function archiveNow() {
-  const data = await getArchive(key);
-  const stamp = new Date().toISOString().slice(0, 10);
-  const name = (data.settings && data.settings.event_name ? data.settings.event_name : 'jalan-lasak').replace(/[^\w-]+/g, '-').toLowerCase();
-  download(`${name}-arkib-${stamp}.json`, JSON.stringify(data, null, 1), 'application/json');
-  return data;
-}
+/* ── programs: one system, many events ─────────────────────────────── */
 
 /** Parse "25/9 18:00" or "2026-09-25 18:00" in local time; null when it does not read. */
 function parseWhen(text) {
   const m = text.trim().match(/^(\d{1,2})[\/.-](\d{1,2})(?:[\/.-](\d{4}))?\s+(\d{1,2})[:.](\d{2})$/)
     || text.trim().match(/^(\d{4})-(\d{2})-(\d{2})\s+(\d{1,2})[:.](\d{2})$/);
   if (!m) return null;
-  const iso = m[0].startsWith(m[1]) && m[1].length === 4;
+  const iso = m[1].length === 4;
   const [y, mo, d] = iso ? [Number(m[1]), Number(m[2]), Number(m[3])] : [m[3] ? Number(m[3]) : new Date().getFullYear(), Number(m[2]), Number(m[1])];
   const t = new Date(y, mo - 1, d, Number(m[4]), Number(m[5])).getTime();
   return Number.isFinite(t) ? t : null;
 }
 
+/** "25/9/2026" or "" → "2026-09-25" or ''; null when it does not read. */
+function parseDate(text) {
+  const t = text.trim();
+  if (!t) return '';
+  let m = t.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) return t;
+  m = t.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})$/);
+  if (!m) return null;
+  return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+}
+
+/** Name, place, date, notes in turn; null if the person backs out. */
+async function askProgramFields(current = {}, okLabel = 'Simpan') {
+  const name = await askText({ title: 'Nama program', body: 'Contoh: Jalan Lasak Kuala Kubu Bharu.', value: current.name || '', label: 'Nama', okLabel: 'Seterusnya' });
+  if (name === null) return null;
+  if (!name) { notify({ title: 'Nama diperlukan', body: 'Program perlukan nama.' }); return null; }
+  const place = await askText({ title: 'Tempat', value: current.place || '', placeholder: 'Kuala Kubu Bharu', label: 'Tempat', okLabel: 'Seterusnya' });
+  if (place === null) return null;
+  const dateText = await askText({ title: 'Tarikh program', body: 'Bentuk 25/9/2026. Kosongkan jika belum pasti.', value: current.date || '', placeholder: '25/9/2026', label: 'Tarikh', okLabel: 'Seterusnya' });
+  if (dateText === null) return null;
+  const date = parseDate(dateText);
+  if (date === null) { notify({ title: 'Tarikh tidak difahami', body: 'Taip seperti 25/9/2026.' }); return null; }
+  const notes = await askText({ title: 'Nota', body: 'Pilihan: penganjur, bilangan peserta, apa-apa yang perlu diingat.', value: current.notes || '', label: 'Nota', okLabel });
+  if (notes === null) return null;
+  return { name, place, date, notes };
+}
+
+async function afterProgramChange(message) {
+  viewing = '';
+  await pullState();
+  await pollPositions();
+  renderGroups();
+  toast(message, 5000);
+}
+
+$('btnProgramEdit').addEventListener('click', async () => {
+  if (readOnly()) return;
+  const p = (state.settings && state.settings.program) || {};
+  const f = await askProgramFields(p);
+  if (!f) return;
+  try {
+    await withKey(() => updateProgram(key, p.id, f));
+    await afterProgramChange('Butiran program disimpan.');
+  } catch (err) { notify({ title: 'Gagal simpan', body: err.message }); }
+});
+
 $('btnEndProgram').addEventListener('click', async () => {
-  const s = state.settings || {};
-  if (Number.isFinite(s.endedAt) && s.endedAt) {
+  if (readOnly()) return;
+  const p = (state.settings && state.settings.program) || {};
+  if (Number.isFinite(p.endedAt) && p.endedAt) {
     const ok = await askConfirm({ title: 'Buka semula program?', body: 'Telefon boleh masuk dan melapor semula. Setiap telefon perlu masuk PIN sekali lagi.', okLabel: 'Buka semula' });
     if (!ok) return;
     try {
-      const r = await withKey(() => endProgram(key, null));
-      state.version = r.version; state.settings = { ...state.settings, endedAt: null }; saveState(state); renderGroups();
-      toast('Program dibuka semula.');
+      await withKey(() => endProgram(key, null));
+      await afterProgramChange('Program dibuka semula.');
     } catch (err) { notify({ title: 'Gagal', body: err.message }); }
     return;
   }
   const when = await askText({
     title: 'Tamatkan program',
-    body: 'Rekod kekal; selepas masa ini telefon tidak boleh masuk atau melapor lagi, dan setiap telefon yang masih masuk akan log keluar. Kosongkan untuk tamat sekarang, atau taip masa seperti 25/9 18:00.',
+    body: 'Rekod kekal di pelayan. Selepas masa ini telefon tidak boleh masuk atau melapor lagi, dan telefon yang masih masuk akan log keluar. Kosongkan untuk tamat sekarang, atau taip masa seperti 25/9 18:00.',
     placeholder: 'sekarang',
     label: 'Masa tamat',
     okLabel: 'Tamatkan'
@@ -391,57 +448,75 @@ $('btnEndProgram').addEventListener('click', async () => {
   const at = when.trim() ? parseWhen(when) : Date.now();
   if (at === null) { notify({ title: 'Masa tidak difahami', body: 'Taip seperti 25/9 18:00 atau 2026-09-25 18:00.' }); return; }
   try {
-    const r = await withKey(() => endProgram(key, at));
-    state.version = r.version; state.settings = { ...state.settings, endedAt: r.endedAt }; saveState(state); renderGroups();
-    toast('Program ditamatkan.');
+    await withKey(() => endProgram(key, at));
+    await afterProgramChange('Program ditamatkan.');
   } catch (err) { notify({ title: 'Gagal', body: err.message }); }
 });
 
-$('btnArchive').addEventListener('click', async () => {
-  try {
-    const data = await withKey(archiveNow);
-    toast(`Arkib dimuat turun: ${data.positions.length} kedudukan, ${data.checkins.length} daftar masuk.`, 4000);
-  } catch (err) {
-    notify({ title: 'Gagal muat turun arkib', body: err.message });
-  }
-});
-
 $('btnNewProgram').addEventListener('click', async () => {
-  const scope = await askChoice({
-    title: 'Program baharu',
-    body: 'Arkib penuh dimuat turun dahulu. Kemudian rekod program ini dipadam mengikut pilihan, dan setiap telefon peserta dan marshal diminta masuk semula.',
+  const p = (state.settings && state.settings.program) || {};
+  if (!p.endedAt) {
+    const ok = await askConfirm({
+      title: 'Program semasa belum ditamatkan',
+      body: 'Program baharu akan menggantikannya sebagai program aktif: telefon log keluar dan rekod program semasa disimpan seperti sedia ada. Tamatkan dahulu jika belum.',
+      okLabel: 'Teruskan', cancelLabel: 'Batal'
+    });
+    if (!ok) return;
+  }
+  const f = await askProgramFields({}, 'Seterusnya');
+  if (!f) return;
+  const copy = await askChoice({
+    title: 'Checkpoint dan laluan',
+    body: 'Salin dari program semasa (kod checkpoint baharu dijana), atau mula dengan MULA sahaja untuk tempat baharu.',
     options: [
-      { value: 'records', label: 'Padam rekod sahaja — checkpoint, laluan dan kumpulan (PIN sama) kekal' },
-      { value: 'groups', label: 'Padam rekod dan kumpulan — checkpoint dan laluan kekal' },
-      { value: 'all', label: 'Padam semua — hanya MULA tinggal, untuk tempat baharu' }
+      { value: 'copy', label: 'Salin checkpoint dan laluan dari ' + (p.name || 'program semasa') },
+      { value: 'fresh', label: 'Mula kosong: MULA sahaja' }
     ],
     cancelLabel: 'Batal'
   });
-  if (!scope) return;
-  const newCodes = scope === 'all' ? false : await askConfirm({
-    title: 'Kod checkpoint baharu?',
-    body: 'Kod yang dicetak untuk program lepas tidak akan berfungsi lagi. Jana semula jika kertas lama masih beredar.',
-    okLabel: 'Jana kod baharu',
-    cancelLabel: 'Kekalkan kod'
-  });
-  const word = await askText({
-    title: 'Sahkan padam',
-    body: 'Taip PADAM untuk meneruskan. Tiada undur selepas ini; arkib ialah satu-satunya salinan.',
-    placeholder: 'PADAM',
-    label: 'Pengesahan',
-    okLabel: 'Padam dan mulakan'
-  });
-  if (word === null || word.trim().toUpperCase() !== 'PADAM') { toast('Dibatalkan.'); return; }
+  if (!copy) return;
   try {
-    await withKey(archiveNow);
-    const result = await withKey(() => resetProgram(key, { scope, newCodes }));
+    const r = await withKey(() => createProgram(key, { ...f, copyPoints: copy === 'copy' }));
+    await afterProgramChange('Program baharu dimulakan: ' + r.program.name + '. Tambah kumpulan dan edarkan PIN.');
+  } catch (err) { notify({ title: 'Gagal memulakan program', body: err.message }); }
+});
+
+$('btnPrograms').addEventListener('click', async () => {
+  let list;
+  try { list = await withKey(() => getPrograms(key)); } catch (err) { notify({ title: 'Gagal', body: err.message }); return; }
+  const fmt = (q) => `${q.name}${q.date ? ' · ' + q.date : ''}${q.place ? ' · ' + q.place : ''} — ${q.counts.groups} kumpulan, ${q.counts.positions} kedudukan${q.active ? ' (aktif)' : ''}${q.endedAt ? ' · tamat' : ''}`;
+  const id = await askChoice({
+    title: 'Semua program',
+    body: 'Pilih program untuk melihat rekodnya. Program lepas dibuka baca sahaja.',
+    options: list.programs.map((q) => ({ value: q.id, label: fmt(q), selected: q.id === (viewing || list.active) })),
+    cancelLabel: 'Tutup'
+  });
+  if (!id) return;
+  if (id === list.active) { viewing = ''; await afterProgramChange('Kembali ke program semasa.'); return; }
+  const action = await askChoice({
+    title: list.programs.find((q) => q.id === id).name,
+    options: [
+      { value: 'view', label: 'Lihat rekod (baca sahaja)' },
+      { value: 'activate', label: 'Jadikan program aktif semula' }
+    ],
+    cancelLabel: 'Batal'
+  });
+  if (!action) return;
+  if (action === 'view') {
+    viewing = id;
     await pullState();
     await pollPositions();
     renderGroups();
-    toast('Program baharu dimulakan (versi ' + result.version + ').', 5000);
-  } catch (err) {
-    notify({ title: 'Gagal memulakan program baharu', body: err.message });
+    syncViewBanner();
+    core.lock();
+    return;
   }
+  const ok = await askConfirm({ title: 'Jadikan aktif?', body: 'Telefon akan log keluar dari program semasa dan masuk semula ke program ini dengan PIN-nya.', okLabel: 'Jadikan aktif' });
+  if (!ok) return;
+  try {
+    await withKey(() => activateProgram(key, id));
+    await afterProgramChange('Program aktif ditukar.');
+  } catch (err) { notify({ title: 'Gagal', body: err.message }); }
 });
 
 /* ── checkpoint codes: see them, print them for the marshals ────────── */
@@ -522,6 +597,7 @@ async function checkInGroup(id) {
     cancelLabel: 'Batal'
   });
   if (!point) return;
+  if (readOnly()) return;
   try {
     await withKey(() => postCheckins({ key, device: 'cc', items: [{ group: id, point, at: Date.now() }] }));
     toast(g.name + ' dicatat tiba.');
@@ -575,6 +651,7 @@ $('btnSmsIn').addEventListener('click', async () => {
     });
     if (!groupId) return;
   }
+  if (readOnly()) return;
   try {
     await withKey(() => postPositions(groupId, 'cc',
       [{ lat: parsed.lat, lng: parsed.lng, sos: parsed.sos, source: 'sms', at: Date.now() }], { key }));
@@ -841,7 +918,7 @@ function drawTrail(g) {
 }
 
 async function loadFullTrack(g) {
-  const data = await withKey(() => getTrack(key, g.id));
+  const data = await withKey(() => getTrack(key, g.id, 0, viewing));
   fullTrack = { id: g.id, fixes: data.fixes, lastAt: g.last ? g.last.at : 0, checkins: data.checkins, truncated: data.truncated };
   return fullTrack;
 }
@@ -1131,7 +1208,7 @@ async function pollPositions() {
   if (polling || !key) return;
   polling = true;
   try {
-    const data = await getPositions(key, TRAIL_POINTS);
+    const data = await getPositions(key, TRAIL_POINTS, {}, viewing);
     serverNow = data.now;
     positions = data.groups;
     // Start times may have been set by a marshal; keep our copy current.

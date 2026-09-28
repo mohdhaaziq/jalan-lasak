@@ -69,16 +69,21 @@ Ini menghalang checkpoint teralih oleh sentuhan tidak sengaja semasa program.
 
 ### Satu sistem, banyak program
 
-Pusat kawalan boleh menamatkan program dan memulakan yang baharu dari tab
-*Senarai*: **Tamatkan program** menutup program pada satu masa (rekod kekal,
-telefon berhenti boleh masuk dan melapor), **Muat turun arkib** menyimpan setiap jadual sebagai JSON, dan
-**Program baharu** memadam rekod mengikut skop (rekod sahaja; rekod dan
-kumpulan; semua kecuali MULA, untuk tempat baharu), dengan pilihan kod
-checkpoint baharu supaya kertas lama tidak berfungsi. Pelayan menaikkan
-*epoch* program; telefon peserta dan marshal yang melihat epoch berbeza
-akan log keluar sendiri dan meminta PIN semula, jadi checkpoint dan giliran
-program lama tidak terbawa. Nama program ditetapkan di *Tetapan* dan muncul
-pada tajuk halaman dan dalam arkib.
+Setiap acara ialah satu baris dalam jadual `programs` (nama, tempat, tarikh,
+nota, masa tamat), dan setiap checkpoint, laluan, kumpulan, kedudukan dan
+daftar masuk bertanda `program_id`. Satu program **aktif** (`meta.active_program`)
+ialah yang dilihat telefon peserta dan marshal; tiada apa dipadam bila
+program seterusnya bermula. Dari tab *Senarai* pusat kawalan: **Butiran**
+mengubah nama, tempat, tarikh dan nota; **Tamatkan** menutup program pada satu
+masa (selepas itu masuk, kedudukan dan daftar masuk ditolak, telefon log
+keluar); **Program baharu** mencipta program seterusnya dan menjadikannya
+aktif, dengan pilihan menyalin checkpoint dan laluan (kod baharu dijana) atau
+bermula dengan MULA sahaja; **Semua program** menyenaraikan setiap program
+dengan kiraannya, untuk dilihat baca sahaja (`?program=ID` pada bacaan) atau
+dijadikan aktif semula. Pelayan menaikkan *epoch* bila program aktif berubah;
+telefon yang melihat epoch berbeza log keluar sendiri dan meminta PIN semula.
+PIN kumpulan unik merentas semua program, jadi kertas lama tidak membuka
+program baharu.
 
 ### Checkpoint didedahkan satu persatu
 
@@ -290,14 +295,16 @@ design/                 bundle serahan Claude Design (rujukan)
 
 | Kaedah | Laluan | Siapa | Kegunaan |
 | --- | --- | --- | --- |
-| GET | `/api/state` | semua | checkpoint, laluan, kumpulan (+ masa mula), tetapan, versi, `area` (kotak semua titik + laluan, tambah 1.5 km, untuk peta offline). Kunci / PIN marshal: semua titik dengan `code` dan jadual `etaMin`; `X-Group-Pin`: titik yang didedahkan tanpa `code` dan tanpa `etaMin`, plus `progress` dan `locked`; tanpa apa-apa: MULA sahaja |
+| GET | `/api/state[?program=ID]` | semua | checkpoint, laluan, kumpulan (+ masa mula), tetapan, versi, `area` (kotak semua titik + laluan, tambah 1.5 km, untuk peta offline). Kunci / PIN marshal: semua titik dengan `code` dan jadual `etaMin`; `X-Group-Pin`: titik yang didedahkan tanpa `code` dan tanpa `etaMin`, plus `progress` dan `locked`; tanpa apa-apa: MULA sahaja |
 | PUT | `/api/state` | kunci | ganti checkpoint + laluan (`from`, `to` = id titik; `to` mesti checkpoint) |
 | PUT | `/api/groups` | kunci | ganti senarai kumpulan; masa mula dan PIN dikekalkan jika tidak dihantar, `resetPin: true` jana PIN baharu; pulang PIN setiap kumpulan |
 | POST | `/api/groups/login` | telefon | `{ pin }` → kumpulan yang memiliki PIN itu |
-| PUT | `/api/settings` | kunci | nombor SMS, PIN marshal, nama program |
-| GET | `/api/archive` | kunci | semua jadual sebagai JSON — rekod program, dimuat turun sebelum menamatkannya |
-| POST | `/api/program/end` | kunci | tamatkan program pada satu masa (lalai sekarang; `null` buka semula): rekod kekal, telefon log keluar, masuk dan laporan selepas itu ditolak (409) |
-| POST | `/api/program/reset` | kunci | tamatkan program: padam kedudukan dan daftar masuk (dan kumpulan / checkpoint ikut skop `records`, `groups`, `all`), kod baharu jika diminta, naikkan *epoch* supaya setiap telefon masuk semula |
+| PUT | `/api/settings` | kunci | nombor SMS, PIN marshal |
+| GET | `/api/programs` | kunci | setiap program dengan kiraan kumpulan, checkpoint, kedudukan, daftar masuk; `active` |
+| POST | `/api/programs` | kunci | cipta program seterusnya dan jadikan aktif (`copyPoints` menyalin checkpoint dan laluan dengan kod baharu) |
+| PUT | `/api/programs/:id` | kunci | nama, tempat, tarikh, nota |
+| POST | `/api/programs/:id/activate` | kunci | jadikan program lepas aktif semula |
+| POST | `/api/program/end` | kunci | tutup program aktif pada satu masa (lalai sekarang; `null` buka semula): rekod kekal, telefon log keluar, masuk dan laporan selepas itu ditolak (409) |
 | POST | `/api/positions` | telefon (PIN kumpulan) atau kunci | hantar sekumpulan kedudukan (`source: 'sms'` untuk yang ditaip); pulang `revealed` = bilangan titik yang kumpulan itu boleh lihat |
 | GET | `/api/positions?trail=N` | kunci **atau** PIN | kedudukan terkini, daftar masuk dan masa mula setiap kumpulan + N jejak; PIN kumpulan hanya untuk kunci |
 | GET | `/api/track?group=ID` | kunci | semua kedudukan yang dirakam untuk satu kumpulan, dari awal (jejak penuh, eksport GPX / CSV) |
@@ -313,7 +320,7 @@ Melayu dan dipaparkan terus dalam app.
 
 | Cache | Isi | Dibuang bila |
 | --- | --- | --- |
-| `jl-shell-v45` | fail app + salinan terakhir `/api/state` | versi baharu digunakan |
+| `jl-shell-v46` | fail app + salinan terakhir `/api/state` | versi baharu digunakan |
 | `jl-tiles-v1` | tile kawasan program, dimuat turun **sendiri** oleh `autocache.js` | hanya melalui butang *Kosongkan* |
 | `jl-tiles-auto-v1` | tile yang terpapar semasa melayari | automatik, melebihi 1500 tile |
 

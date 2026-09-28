@@ -39,6 +39,7 @@ export function mountEditing(core) {
   }
 
   core.hooks.unlock = async () => {
+    if (core.hooks.readOnly && core.hooks.readOnly()) return false;
     const pin = await askText({
       title: 'Buka kunci penyuntingan',
       body: 'Masukkan PIN marshal untuk alih, tambah atau padam checkpoint dan laluan. Kunci tertutup semula selepas 15 minit, atau bila mangga ditekan.',

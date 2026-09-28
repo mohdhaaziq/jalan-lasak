@@ -44,7 +44,7 @@ async function call(path, { method = 'GET', body, key, pin, groupPin } = {}) {
  * how many checkpoints come back — { key } or { pin } (marshal) get them all,
  * { groupPin } gets the ones revealed to that group, nothing gets MULA only.
  */
-export const getState = (auth = {}) => call('state', auth);
+export const getState = (auth = {}, program = '') => call('state' + (program ? '?program=' + encodeURIComponent(program) : ''), auth);
 
 /** Command centre: replace the points and routes. Resolves to { version }. */
 export const putState = (key, { points, routes }) =>
@@ -71,27 +71,34 @@ export const loginGroup = (pin) =>
  * centre passes its key; a marshal phone passes { pin } instead and gets
  * the same answer without the groups' PINs.
  */
-export const getPositions = (key, trail = 0, { pin } = {}) =>
-  call('positions' + (trail ? `?trail=${trail}` : ''), { key, pin });
+export const getPositions = (key, trail = 0, { pin } = {}, program = '') =>
+  call('positions?trail=' + (trail || 0) + (program ? '&program=' + encodeURIComponent(program) : ''), { key, pin });
 
 /** Command centre: every stored fix of one group, oldest first, optionally since a time (ms). */
-export const getTrack = (key, group, since = 0) =>
-  call('track?group=' + encodeURIComponent(group) + (since ? '&since=' + since : ''), { key });
+export const getTrack = (key, group, since = 0, program = '') =>
+  call('track?group=' + encodeURIComponent(group) + (since ? '&since=' + since : '') + (program ? '&program=' + encodeURIComponent(program) : ''), { key });
 
 /** Command centre: the SMS fallback number and/or the marshal PIN. */
 export const putSettings = (key, settings) =>
   call('settings', { method: 'PUT', key, body: settings });
 
-/** Every table as JSON — the record of an event, taken before ending it. */
-export const getArchive = (key) => call('archive', { key });
-
-/** Close the program at endedAt (ms; omitted = now; null = reopen) without touching its records. */
+/** Close the active program at endedAt (ms; omitted = now; null = reopen) without touching its records. */
 export const endProgram = (key, endedAt) =>
   call('program/end', { method: 'POST', key, body: { endedAt } });
 
-/** End the program: wipe by scope ('records' | 'groups' | 'all'), bump the epoch. */
-export const resetProgram = (key, { scope, newCodes = false }) =>
-  call('program/reset', { method: 'POST', key, body: { scope, newCodes } });
+/** Every program with counts, newest first; `active` names the one phones see. */
+export const getPrograms = (key) => call('programs', { key });
+
+/** Start the next program (it becomes active; phones log out). copyPoints copies the current checkpoints and routes. */
+export const createProgram = (key, { name, place = '', date = '', notes = '', copyPoints = false }) =>
+  call('programs', { method: 'POST', key, body: { name, place, date, notes, copyPoints } });
+
+export const updateProgram = (key, id, fields) =>
+  call('programs/' + encodeURIComponent(id), { method: 'PUT', key, body: fields });
+
+/** Make an earlier program the active one again. */
+export const activateProgram = (key, id) =>
+  call('programs/' + encodeURIComponent(id) + '/activate', { method: 'POST', key, body: {} });
 
 /**
  * Record groups arriving at points. Proven by the command-centre key or the
