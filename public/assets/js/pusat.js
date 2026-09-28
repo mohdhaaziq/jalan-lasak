@@ -5,7 +5,7 @@
 
 import { boot, $, el, isStart, groupLabel, cardinal } from './core.js';
 import { mountEditing } from './edit.js';
-import { getState, putState, putGroups, putSettings, getPositions, postPositions, postCheckins, getTrack, getArchive, resetProgram } from './api.js';
+import { getState, putState, putGroups, putSettings, getPositions, postPositions, postCheckins, getTrack, getArchive, resetProgram, endProgram } from './api.js';
 import { loadCCKey, saveCCKey, saveState } from './store.js';
 import { askText, askChoice, askConfirm, notify, toast } from './ui.js';
 import { distM, fmtDist, bearing } from './geo.js';
@@ -294,6 +294,11 @@ function renderGroups() {
     (s.smsNumber ? 'SMS ke ' + s.smsNumber : 'Nombor SMS belum ditetapkan') +
     ' · ' + (s.hasMarshalPin ? 'PIN marshal ditetapkan' : 'PIN marshal belum ditetapkan');
   if (s.eventName) document.title = s.eventName + ' — Pusat kawalan';
+  const ended = Number.isFinite(s.endedAt) && s.endedAt;
+  $('progstat').textContent = ended
+    ? 'Program tamat ' + new Date(ended).toLocaleString('ms-MY', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) + ' · telefon tidak lagi boleh masuk atau melapor'
+    : 'Program sedang berjalan · telefon boleh masuk dan melapor';
+  $('btnEndProgram').textContent = ended ? 'Buka semula program' : 'Tamatkan program';
 }
 
 /* ── settings: SMS number + marshal PIN ─────────────────────────────── */
@@ -351,6 +356,46 @@ async function archiveNow() {
   download(`${name}-arkib-${stamp}.json`, JSON.stringify(data, null, 1), 'application/json');
   return data;
 }
+
+/** Parse "25/9 18:00" or "2026-09-25 18:00" in local time; null when it does not read. */
+function parseWhen(text) {
+  const m = text.trim().match(/^(\d{1,2})[\/.-](\d{1,2})(?:[\/.-](\d{4}))?\s+(\d{1,2})[:.](\d{2})$/)
+    || text.trim().match(/^(\d{4})-(\d{2})-(\d{2})\s+(\d{1,2})[:.](\d{2})$/);
+  if (!m) return null;
+  const iso = m[0].startsWith(m[1]) && m[1].length === 4;
+  const [y, mo, d] = iso ? [Number(m[1]), Number(m[2]), Number(m[3])] : [m[3] ? Number(m[3]) : new Date().getFullYear(), Number(m[2]), Number(m[1])];
+  const t = new Date(y, mo - 1, d, Number(m[4]), Number(m[5])).getTime();
+  return Number.isFinite(t) ? t : null;
+}
+
+$('btnEndProgram').addEventListener('click', async () => {
+  const s = state.settings || {};
+  if (Number.isFinite(s.endedAt) && s.endedAt) {
+    const ok = await askConfirm({ title: 'Buka semula program?', body: 'Telefon boleh masuk dan melapor semula. Setiap telefon perlu masuk PIN sekali lagi.', okLabel: 'Buka semula' });
+    if (!ok) return;
+    try {
+      const r = await withKey(() => endProgram(key, null));
+      state.version = r.version; state.settings = { ...state.settings, endedAt: null }; saveState(state); renderGroups();
+      toast('Program dibuka semula.');
+    } catch (err) { notify({ title: 'Gagal', body: err.message }); }
+    return;
+  }
+  const when = await askText({
+    title: 'Tamatkan program',
+    body: 'Rekod kekal; selepas masa ini telefon tidak boleh masuk atau melapor lagi, dan setiap telefon yang masih masuk akan log keluar. Kosongkan untuk tamat sekarang, atau taip masa seperti 25/9 18:00.',
+    placeholder: 'sekarang',
+    label: 'Masa tamat',
+    okLabel: 'Tamatkan'
+  });
+  if (when === null) return;
+  const at = when.trim() ? parseWhen(when) : Date.now();
+  if (at === null) { notify({ title: 'Masa tidak difahami', body: 'Taip seperti 25/9 18:00 atau 2026-09-25 18:00.' }); return; }
+  try {
+    const r = await withKey(() => endProgram(key, at));
+    state.version = r.version; state.settings = { ...state.settings, endedAt: r.endedAt }; saveState(state); renderGroups();
+    toast('Program ditamatkan.');
+  } catch (err) { notify({ title: 'Gagal', body: err.message }); }
+});
 
 $('btnArchive').addEventListener('click', async () => {
   try {

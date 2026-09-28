@@ -85,6 +85,10 @@ export const putSettings = (key, settings) =>
 /** Every table as JSON — the record of an event, taken before ending it. */
 export const getArchive = (key) => call('archive', { key });
 
+/** Close the program at endedAt (ms; omitted = now; null = reopen) without touching its records. */
+export const endProgram = (key, endedAt) =>
+  call('program/end', { method: 'POST', key, body: { endedAt } });
+
 /** End the program: wipe by scope ('records' | 'groups' | 'all'), bump the epoch. */
 export const resetProgram = (key, { scope, newCodes = false }) =>
   call('program/reset', { method: 'POST', key, body: { scope, newCodes } });

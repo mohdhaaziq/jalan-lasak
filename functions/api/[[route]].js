@@ -38,6 +38,9 @@
      POST /api/groups/login       { pin }     → { id, name, startedAt }          public
      PUT  /api/settings           { smsNumber?, marshalPin?, eventName? } → { version }   CC
      GET  /api/archive            every table as JSON, for keeping after the event   CC
+     POST /api/program/end        { endedAt?: ms | null } → { version, endedAt }   CC
+                                  closes the program at that time (default now; null reopens): phones log
+                                  out, and positions, check-ins and logins are refused afterwards
      POST /api/program/reset      { scope: 'records'|'groups'|'all', newCodes? } → { version, epoch }   CC
                                   ends the program: wipes positions and check-ins (and groups / points
                                   by scope), clears start times, bumps the epoch so phones log out
@@ -221,11 +224,17 @@ async function seedIfEmpty(db) {
 }
 
 async function getSettings(db) {
-  const [sms, pin, name, epoch] = await Promise.all([
-    getMeta(db, 'sms_number'), getMeta(db, 'marshal_pin'), getMeta(db, 'event_name'), getMeta(db, 'epoch')
+  const [sms, pin, name, epoch, ended] = await Promise.all([
+    getMeta(db, 'sms_number'), getMeta(db, 'marshal_pin'), getMeta(db, 'event_name'), getMeta(db, 'epoch'), getMeta(db, 'ended_at')
   ]);
-  // epoch changes when a program is ended; phones that saw an older one log out.
-  return { smsNumber: sms || '', hasMarshalPin: !!pin, eventName: name || '', epoch: Number(epoch) || 0 };
+  // epoch changes when a program is ended or reset; phones that saw an older one log out.
+  return { smsNumber: sms || '', hasMarshalPin: !!pin, eventName: name || '', epoch: Number(epoch) || 0, endedAt: Number(ended) || null };
+}
+
+/** Once the program has been closed, phones may not log in or report any more. */
+async function assertOpen(db) {
+  const ended = Number(await getMeta(db, 'ended_at')) || 0;
+  if (ended && Date.now() > ended) throw new HttpError(409, 'Program telah tamat.');
 }
 
 /**
@@ -475,6 +484,7 @@ async function loginGroup(request, env) {
   const body = await readJson(request);
   const pin = cleanText(body.pin, 16).replace(/\D/g, '');
   if (!isPin(pin)) throw new HttpError(400, `PIN kumpulan ialah ${PIN_DIGITS} digit.`);
+  await assertOpen(env.DB);
   const g = await env.DB.prepare('SELECT id, name, started_at FROM groups WHERE pin = ?').bind(pin).first();
   if (!g) throw new HttpError(401, 'PIN kumpulan salah.');
   return json({ id: g.id, name: g.name, startedAt: g.started_at });
@@ -519,6 +529,7 @@ async function postPositions(request, env) {
   if (!isCC(request, env) && !(isPin(group.pin) && sameKey(String(body.pin || ''), group.pin))) {
     throw new HttpError(401, 'PIN kumpulan salah — masuk semula.');
   }
+  if (!isCC(request, env)) await assertOpen(db);
 
   const now = Date.now();
   const stmts = [];
@@ -647,6 +658,7 @@ async function postCheckins(request, env) {
   }
   const body = await readJson(request);
   if (body.verify) return json({ ok: true, role: who });   // a marshal phone checking its PIN
+  if (who !== 'cc') await assertOpen(env.DB);
   const items = Array.isArray(body.items) ? body.items.slice(-MAX_BATCH) : [];
   if (!items.length) throw new HttpError(400, 'Tiada daftar masuk diberi.');
   const device = isId(body.device) ? body.device : null;
@@ -741,9 +753,33 @@ async function resetProgram(request, env) {
   }
   const epoch = Date.now();
   stmts.push(setMeta(db, 'epoch', String(epoch)));
+  stmts.push(delMeta(db, 'ended_at'));
   stmts.push(bumpVersion(db));
   await db.batch(stmts);
   return json({ version: await getVersion(db), epoch, scope });
+}
+
+/**
+ * Close the program at a time (default now) without touching its records:
+ * phones log out through the epoch, and nothing may be reported after it.
+ * endedAt null reopens it.
+ */
+async function endProgram(request, env) {
+  requireCC(request, env);
+  const body = await readJson(request);
+  const db = env.DB;
+  const stmts = [];
+  let endedAt = null;
+  if (body.endedAt === null) {
+    stmts.push(delMeta(db, 'ended_at'));
+  } else {
+    endedAt = Number.isFinite(body.endedAt) ? body.endedAt : Date.now();
+    stmts.push(setMeta(db, 'ended_at', String(endedAt)));
+  }
+  stmts.push(setMeta(db, 'epoch', String(Date.now())));
+  stmts.push(bumpVersion(db));
+  await db.batch(stmts);
+  return json({ version: await getVersion(db), endedAt });
 }
 
 /* ── router ───────────────────────────────────────────────────────────── */
@@ -767,6 +803,7 @@ export async function onRequest({ request, env }) {
     if (route === 'checkins' && method === 'POST') return await postCheckins(request, env);
     if (route === 'archive' && method === 'GET') return await getArchive(request, env);
     if (route === 'program/reset' && method === 'POST') return await resetProgram(request, env);
+    if (route === 'program/end' && method === 'POST') return await endProgram(request, env);
     if (route === 'ping') return json({ ok: true, now: Date.now() });
 
     return fail(404, 'Laluan API tidak wujud.');

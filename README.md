@@ -70,7 +70,8 @@ Ini menghalang checkpoint teralih oleh sentuhan tidak sengaja semasa program.
 ### Satu sistem, banyak program
 
 Pusat kawalan boleh menamatkan program dan memulakan yang baharu dari tab
-*Senarai*: **Muat turun arkib** menyimpan setiap jadual sebagai JSON, dan
+*Senarai*: **Tamatkan program** menutup program pada satu masa (rekod kekal,
+telefon berhenti boleh masuk dan melapor), **Muat turun arkib** menyimpan setiap jadual sebagai JSON, dan
 **Program baharu** memadam rekod mengikut skop (rekod sahaja; rekod dan
 kumpulan; semua kecuali MULA, untuk tempat baharu), dengan pilihan kod
 checkpoint baharu supaya kertas lama tidak berfungsi. Pelayan menaikkan
@@ -295,6 +296,7 @@ design/                 bundle serahan Claude Design (rujukan)
 | POST | `/api/groups/login` | telefon | `{ pin }` → kumpulan yang memiliki PIN itu |
 | PUT | `/api/settings` | kunci | nombor SMS, PIN marshal, nama program |
 | GET | `/api/archive` | kunci | semua jadual sebagai JSON — rekod program, dimuat turun sebelum menamatkannya |
+| POST | `/api/program/end` | kunci | tamatkan program pada satu masa (lalai sekarang; `null` buka semula): rekod kekal, telefon log keluar, masuk dan laporan selepas itu ditolak (409) |
 | POST | `/api/program/reset` | kunci | tamatkan program: padam kedudukan dan daftar masuk (dan kumpulan / checkpoint ikut skop `records`, `groups`, `all`), kod baharu jika diminta, naikkan *epoch* supaya setiap telefon masuk semula |
 | POST | `/api/positions` | telefon (PIN kumpulan) atau kunci | hantar sekumpulan kedudukan (`source: 'sms'` untuk yang ditaip); pulang `revealed` = bilangan titik yang kumpulan itu boleh lihat |
 | GET | `/api/positions?trail=N` | kunci **atau** PIN | kedudukan terkini, daftar masuk dan masa mula setiap kumpulan + N jejak; PIN kumpulan hanya untuk kunci |
@@ -311,7 +313,7 @@ Melayu dan dipaparkan terus dalam app.
 
 | Cache | Isi | Dibuang bila |
 | --- | --- | --- |
-| `jl-shell-v44` | fail app + salinan terakhir `/api/state` | versi baharu digunakan |
+| `jl-shell-v45` | fail app + salinan terakhir `/api/state` | versi baharu digunakan |
 | `jl-tiles-v1` | tile kawasan program, dimuat turun **sendiri** oleh `autocache.js` | hanya melalui butang *Kosongkan* |
 | `jl-tiles-auto-v1` | tile yang terpapar semasa melayari | automatik, melebihi 1500 tile |
 
