@@ -5,7 +5,7 @@
 
 import { boot, $, el, isStart, groupLabel, cardinal } from './core.js';
 import { mountEditing } from './edit.js';
-import { getState, putState, putGroups, putSettings, getPositions, postPositions, postCheckins, getTrack } from './api.js';
+import { getState, putState, putGroups, putSettings, getPositions, postPositions, postCheckins, getTrack, getArchive, resetProgram } from './api.js';
 import { loadCCKey, saveCCKey, saveState } from './store.js';
 import { askText, askChoice, askConfirm, notify, toast } from './ui.js';
 import { distM, fmtDist, bearing } from './geo.js';
@@ -290,14 +290,25 @@ function renderGroups() {
     wrap.append(row);
   });
   const s = state.settings || {};
-  $('setstat').textContent = (s.smsNumber ? 'SMS ke ' + s.smsNumber : 'Nombor SMS belum ditetapkan') +
+  $('setstat').textContent = (s.eventName ? 'Program: ' + s.eventName + ' · ' : '') +
+    (s.smsNumber ? 'SMS ke ' + s.smsNumber : 'Nombor SMS belum ditetapkan') +
     ' · ' + (s.hasMarshalPin ? 'PIN marshal ditetapkan' : 'PIN marshal belum ditetapkan');
+  if (s.eventName) document.title = s.eventName + ' — Pusat kawalan';
 }
 
 /* ── settings: SMS number + marshal PIN ─────────────────────────────── */
 
 $('btnSettings').addEventListener('click', async () => {
   const s = state.settings || {};
+  const eventName = await askText({
+    title: 'Nama program',
+    body: 'Dipaparkan pada tajuk setiap halaman dan dalam arkib. Contoh: Jalan Lasak KKB, 25 Sep 2026.',
+    value: s.eventName || '',
+    placeholder: 'Jalan Lasak …',
+    label: 'Nama',
+    okLabel: 'Seterusnya'
+  });
+  if (eventName === null) return;
   const sms = await askText({
     title: 'Nombor SMS pusat kawalan',
     body: 'Telefon peserta akan hantar SMS ke nombor ini bila data tiada. Kosongkan untuk buang.',
@@ -317,7 +328,7 @@ $('btnSettings').addEventListener('click', async () => {
     okLabel: 'Simpan'
   });
   if (pin === null) return;
-  const payload = { smsNumber: sms };
+  const payload = { smsNumber: sms, eventName };
   if (pin) payload.marshalPin = pin;
   try {
     const result = await withKey(() => putSettings(key, payload));
@@ -328,6 +339,63 @@ $('btnSettings').addEventListener('click', async () => {
     toast('Tetapan disimpan.');
   } catch (err) {
     notify({ title: 'Gagal simpan tetapan', body: err.message });
+  }
+});
+
+/* ── ending a program: keep its record, then start the next ─────────── */
+
+async function archiveNow() {
+  const data = await getArchive(key);
+  const stamp = new Date().toISOString().slice(0, 10);
+  const name = (data.settings && data.settings.event_name ? data.settings.event_name : 'jalan-lasak').replace(/[^\w-]+/g, '-').toLowerCase();
+  download(`${name}-arkib-${stamp}.json`, JSON.stringify(data, null, 1), 'application/json');
+  return data;
+}
+
+$('btnArchive').addEventListener('click', async () => {
+  try {
+    const data = await withKey(archiveNow);
+    toast(`Arkib dimuat turun: ${data.positions.length} kedudukan, ${data.checkins.length} daftar masuk.`, 4000);
+  } catch (err) {
+    notify({ title: 'Gagal muat turun arkib', body: err.message });
+  }
+});
+
+$('btnNewProgram').addEventListener('click', async () => {
+  const scope = await askChoice({
+    title: 'Program baharu',
+    body: 'Arkib penuh dimuat turun dahulu. Kemudian rekod program ini dipadam mengikut pilihan, dan setiap telefon peserta dan marshal diminta masuk semula.',
+    options: [
+      { value: 'records', label: 'Padam rekod sahaja — checkpoint, laluan dan kumpulan (PIN sama) kekal' },
+      { value: 'groups', label: 'Padam rekod dan kumpulan — checkpoint dan laluan kekal' },
+      { value: 'all', label: 'Padam semua — hanya MULA tinggal, untuk tempat baharu' }
+    ],
+    cancelLabel: 'Batal'
+  });
+  if (!scope) return;
+  const newCodes = scope === 'all' ? false : await askConfirm({
+    title: 'Kod checkpoint baharu?',
+    body: 'Kod yang dicetak untuk program lepas tidak akan berfungsi lagi. Jana semula jika kertas lama masih beredar.',
+    okLabel: 'Jana kod baharu',
+    cancelLabel: 'Kekalkan kod'
+  });
+  const word = await askText({
+    title: 'Sahkan padam',
+    body: 'Taip PADAM untuk meneruskan. Tiada undur selepas ini; arkib ialah satu-satunya salinan.',
+    placeholder: 'PADAM',
+    label: 'Pengesahan',
+    okLabel: 'Padam dan mulakan'
+  });
+  if (word === null || word.trim().toUpperCase() !== 'PADAM') { toast('Dibatalkan.'); return; }
+  try {
+    await withKey(archiveNow);
+    const result = await withKey(() => resetProgram(key, { scope, newCodes }));
+    await pullState();
+    await pollPositions();
+    renderGroups();
+    toast('Program baharu dimulakan (versi ' + result.version + ').', 5000);
+  } catch (err) {
+    notify({ title: 'Gagal memulakan program baharu', body: err.message });
   }
 });
 

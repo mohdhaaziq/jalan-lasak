@@ -20,6 +20,7 @@ const KEY_MARSHAL_POINT = 'jl_mpoint_v1'; // which checkpoint this marshal phone
 const KEY_CHECKIN_QUEUE = 'jl_ciq_v1';   // check-ins not yet delivered
 const KEY_UNLOCKED = 'jl_unlocked_v1';   // points this phone opened with a checkpoint code, offline
 const KEY_CODE_QUEUE = 'jl_codeq_v1';    // those unlocks, as check-ins not yet delivered
+const KEY_EPOCH = 'jl_epoch_v1';         // the program this phone last saw; a new one logs the phone out
 
 export const DEFAULT_POINTS = [
   { id: 'start', type: 'start', name: 'MULA — Parking Stesen KTM Kuala Kubu Bharu', lat: 3.556879, lng: 101.632263 },
@@ -222,3 +223,26 @@ export function loadCheckinQueue() {
 }
 
 export const saveCheckinQueue = (queue) => write(KEY_CHECKIN_QUEUE, queue);
+
+/* ── program epoch ────────────────────────────────────────────────────── */
+
+/** The epoch this phone last synced with, or null before the first sync. */
+export function loadEpoch() {
+  const e = read(KEY_EPOCH, null);
+  return Number.isFinite(e) ? e : null;
+}
+export const saveEpoch = (e) => write(KEY_EPOCH, e);
+
+/**
+ * True when the server's program differs from the one this phone knew: the
+ * command centre ended a program, so group, codes and queues here are stale.
+ * The first sync only records the epoch.
+ */
+export function epochChanged(settings) {
+  const now = settings && Number(settings.epoch) || 0;
+  if (!now) return false;
+  const seen = loadEpoch();
+  if (seen === now) return false;
+  saveEpoch(now);
+  return seen !== null;
+}

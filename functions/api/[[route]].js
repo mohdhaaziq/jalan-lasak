@@ -14,8 +14,10 @@
 
    Checkpoints are revealed to a group one at a time: a participant phone
    (X-Group-Pin header) gets MULA, every checkpoint its group has reached,
-   and the next one. "Reached" is a check-in by a marshal or the command
-   centre, or any of the group's own fixes within REACHED_M of the point.
+   and the next one. "Reached" is a check-in only: by the marshal there, by
+   the command centre relaying a radio call, or by the group's own phone with
+   the point's code. GPS proximity does not reveal anything, so a group must
+   report to the marshal (or scan the code) to get its next checkpoint.
    The command centre and marshals see everything; anyone else, MULA only.
 
    Every point also has a secret 6-character code, shown (as text and a QR)
@@ -34,7 +36,11 @@
      PUT  /api/state              { points, routes:[{id,name,latlngs,from?,to?}] } → { version }   CC
      PUT  /api/groups             { groups }  → { version, groups:[{id,pin}] }    CC
      POST /api/groups/login       { pin }     → { id, name, startedAt }          public
-     PUT  /api/settings           { smsNumber?, marshalPin? } → { version }       CC
+     PUT  /api/settings           { smsNumber?, marshalPin?, eventName? } → { version }   CC
+     GET  /api/archive            every table as JSON, for keeping after the event   CC
+     POST /api/program/reset      { scope: 'records'|'groups'|'all', newCodes? } → { version, epoch }   CC
+                                  ends the program: wipes positions and check-ins (and groups / points
+                                  by scope), clears start times, bumps the epoch so phones log out
      POST /api/positions          { group, pin, device, items[] } → { version, saved, revealed }   group PIN or CC
      GET  /api/positions[?trail=N]  latest fix, check-ins and start per group     CC or marshal PIN (PINs only for CC)
      GET  /api/track?group=ID[&since=ms]  every stored fix of one group, oldest first   CC
@@ -54,7 +60,6 @@ const MAX_TRACK = 6000;     // fixes in one full-track answer: > 8 h at one a mi
 const MAX_NAME = 120;
 const MAX_NOTE = 200;
 const CLOCK_SLACK_MS = 7 * 24 * 3600 * 1000;
-const REACHED_M = 100;      // a fix this close to a point counts as arriving there
 const AREA_PAD_M = 1500;    // margin around the program's points and routes for the offline map
 
 /* ── helpers ──────────────────────────────────────────────────────────── */
@@ -216,33 +221,25 @@ async function seedIfEmpty(db) {
 }
 
 async function getSettings(db) {
-  const [sms, pin] = await Promise.all([getMeta(db, 'sms_number'), getMeta(db, 'marshal_pin')]);
-  return { smsNumber: sms || '', hasMarshalPin: !!pin };
-}
-
-/** Metres between two {lat,lng}, equirectangular — fine at checkpoint scale. */
-function distM(a, b) {
-  const R = 6371000;
-  const dLat = (b.lat - a.lat) * Math.PI / 180;
-  const dLng = (b.lng - a.lng) * Math.PI / 180 * Math.cos((a.lat + b.lat) / 2 * Math.PI / 180);
-  return R * Math.sqrt(dLat * dLat + dLng * dLng);
+  const [sms, pin, name, epoch] = await Promise.all([
+    getMeta(db, 'sms_number'), getMeta(db, 'marshal_pin'), getMeta(db, 'event_name'), getMeta(db, 'epoch')
+  ]);
+  // epoch changes when a program is ended; phones that saw an older one log out.
+  return { smsNumber: sms || '', hasMarshalPin: !!pin, eventName: name || '', epoch: Number(epoch) || 0 };
 }
 
 /**
  * Which of the ordered points a group has reached, and which it may see:
  * MULA, every point reached, and the first one not yet reached. Reaching a
  * point out of order still counts, but revealing walks the sequence.
+ *
+ * Only check-ins count. Walking past a checkpoint used to reveal the next
+ * one through GPS; the organisers want every group to report to the marshal
+ * (so heads are counted) or scan the code, and nothing else.
  */
 async function progressFor(db, groupId, points) {
-  const [checkins, fixes] = await Promise.all([
-    db.prepare('SELECT DISTINCT point_id FROM checkins WHERE group_id = ?').bind(groupId).all(),
-    db.prepare('SELECT lat, lng FROM positions WHERE group_id = ? ORDER BY id DESC LIMIT 600').bind(groupId).all()
-  ]);
+  const checkins = await db.prepare('SELECT DISTINCT point_id FROM checkins WHERE group_id = ?').bind(groupId).all();
   const reached = new Set(checkins.results.map((c) => c.point_id));
-  for (const p of points) {
-    if (reached.has(p.id)) continue;
-    if (fixes.results.some((f) => distM(f, p) <= REACHED_M)) reached.add(p.id);
-  }
   const revealed = [];
   for (const p of points) {
     revealed.push(p);
@@ -497,6 +494,10 @@ async function putSettings(request, env) {
     if (pin && pin.length < 4) throw new HttpError(400, 'PIN marshal sekurang-kurangnya 4 aksara.');
     stmts.push(pin ? setMeta(db, 'marshal_pin', pin) : delMeta(db, 'marshal_pin'));
   }
+  if ('eventName' in body) {
+    const name = cleanText(body.eventName, 80);
+    stmts.push(name ? setMeta(db, 'event_name', name) : delMeta(db, 'event_name'));
+  }
   if (!stmts.length) throw new HttpError(400, 'Tiada tetapan diberi.');
   stmts.push(bumpVersion(db));
   await db.batch(stmts);
@@ -689,6 +690,62 @@ async function postCheckins(request, env) {
   return json({ version: await getVersion(db), saved: items.length, started });
 }
 
+/* ── ending a program, keeping its record ─────────────────────────────── */
+
+/** Every table, as it stands, so the organisers keep the event after a reset. */
+async function getArchive(request, env) {
+  requireCC(request, env);
+  const db = env.DB;
+  const [points, routes, groups, positions, checkins, meta] = await Promise.all([
+    db.prepare('SELECT * FROM points ORDER BY seq').all(),
+    db.prepare('SELECT * FROM routes ORDER BY seq').all(),
+    db.prepare('SELECT * FROM groups ORDER BY seq').all(),
+    db.prepare('SELECT * FROM positions ORDER BY id').all(),
+    db.prepare('SELECT * FROM checkins ORDER BY id').all(),
+    db.prepare('SELECT key, value FROM meta').all()
+  ]);
+  const settings = Object.fromEntries(meta.results.filter((m) => m.key !== 'marshal_pin').map((m) => [m.key, m.value]));
+  return json({
+    exportedAt: Date.now(),
+    settings,
+    points: points.results,
+    routes: routes.results.map((r) => ({ ...r, latlngs: JSON.parse(r.latlngs) })),
+    groups: groups.results,
+    positions: positions.results,
+    checkins: checkins.results
+  });
+}
+
+/**
+ * End the program. scope 'records' keeps checkpoints and groups (PINs too)
+ * and wipes what happened; 'groups' also removes the groups; 'all' removes
+ * the checkpoints and routes as well, leaving MULA to be edited for the next
+ * place. newCodes mints fresh checkpoint codes so printed sheets from the
+ * last event stop working. The epoch bump logs every phone out.
+ */
+async function resetProgram(request, env) {
+  requireCC(request, env);
+  const body = await readJson(request);
+  const scope = ['records', 'groups', 'all'].includes(body.scope) ? body.scope : null;
+  if (!scope) throw new HttpError(400, 'Skop tidak sah: records, groups atau all.');
+  const db = env.DB;
+  const stmts = [db.prepare('DELETE FROM positions'), db.prepare('DELETE FROM checkins')];
+  if (scope === 'records') stmts.push(db.prepare('UPDATE groups SET started_at = NULL'));
+  else stmts.push(db.prepare('DELETE FROM groups'));
+  if (scope === 'all') {
+    stmts.push(db.prepare('DELETE FROM routes'));
+    stmts.push(db.prepare("DELETE FROM points WHERE type <> 'start'"));
+    stmts.push(db.prepare('UPDATE points SET eta_min = NULL, code = NULL'));
+  } else if (body.newCodes) {
+    stmts.push(db.prepare('UPDATE points SET code = NULL'));   // ensureCodes mints new ones on the next read
+  }
+  const epoch = Date.now();
+  stmts.push(setMeta(db, 'epoch', String(epoch)));
+  stmts.push(bumpVersion(db));
+  await db.batch(stmts);
+  return json({ version: await getVersion(db), epoch, scope });
+}
+
 /* ── router ───────────────────────────────────────────────────────────── */
 
 export async function onRequest({ request, env }) {
@@ -708,6 +765,8 @@ export async function onRequest({ request, env }) {
     if (route === 'positions' && method === 'GET') return await getPositions(request, env, url);
     if (route === 'track' && method === 'GET') return await getTrack(request, env, url);
     if (route === 'checkins' && method === 'POST') return await postCheckins(request, env);
+    if (route === 'archive' && method === 'GET') return await getArchive(request, env);
+    if (route === 'program/reset' && method === 'POST') return await resetProgram(request, env);
     if (route === 'ping') return json({ ok: true, now: Date.now() });
 
     return fail(404, 'Laluan API tidak wujud.');

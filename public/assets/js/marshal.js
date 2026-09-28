@@ -6,7 +6,7 @@
    Recording a group at MULA is what starts that group's clock. */
 
 import { getState, postCheckins, getPositions } from './api.js';
-import { loadState, saveState, loadMarshal, saveMarshal, loadCheckinQueue, saveCheckinQueue, deviceId, loadPrefs, savePrefs } from './store.js';
+import { loadState, saveState, loadMarshal, saveMarshal, loadCheckinQueue, saveCheckinQueue, deviceId, loadPrefs, savePrefs, epochChanged } from './store.js';
 import { askText, askChoice, askConfirm, notify, toast } from './ui.js';
 import { LAYERS, isStart, groupLabel, keepPopupClear } from './core.js';
 import { clearTiles } from './offline.js';
@@ -52,6 +52,16 @@ const ago = (ms) => {
 async function syncState() {
   try {
     const next = await getState(pin ? { pin } : {});
+    if (epochChanged(next.settings)) {
+      // A new program: forget this phone's PIN, checkpoint and undelivered check-ins, then start over.
+      pin = ''; point = '';
+      saveMarshal({ pin: '', point: '' });
+      queue = []; saveCheckinQueue(queue);
+      await notify({ title: 'Program baharu', body: 'Pusat kawalan telah memulakan program baharu. Masukkan PIN marshal dan pilih checkpoint anda semula.' });
+      location.reload();
+      return false;
+    }
+    if (next.settings && next.settings.eventName) document.title = next.settings.eventName + ' — Marshal';
     state.version = next.version;
     state.points = next.points;
     state.routes = next.routes || [];

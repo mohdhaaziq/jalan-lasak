@@ -67,14 +67,28 @@ sebagai hash supaya kunci masih boleh dibuka tanpa talian. Kunci tertutup
 semula bila mangga ditekan, selepas 15 minit, atau bila halaman dimuat semula.
 Ini menghalang checkpoint teralih oleh sentuhan tidak sengaja semasa program.
 
+### Satu sistem, banyak program
+
+Pusat kawalan boleh menamatkan program dan memulakan yang baharu dari tab
+*Senarai*: **Muat turun arkib** menyimpan setiap jadual sebagai JSON, dan
+**Program baharu** memadam rekod mengikut skop (rekod sahaja; rekod dan
+kumpulan; semua kecuali MULA, untuk tempat baharu), dengan pilihan kod
+checkpoint baharu supaya kertas lama tidak berfungsi. Pelayan menaikkan
+*epoch* program; telefon peserta dan marshal yang melihat epoch berbeza
+akan log keluar sendiri dan meminta PIN semula, jadi checkpoint dan giliran
+program lama tidak terbawa. Nama program ditetapkan di *Tetapan* dan muncul
+pada tajuk halaman dan dalam arkib.
+
 ### Checkpoint didedahkan satu persatu
 
 Telefon peserta hanya menerima MULA, checkpoint yang sudah dicapai
 kumpulannya, dan **satu** checkpoint seterusnya — pelayan menapis mengikut
-PIN kumpulan, bukan sekadar menyembunyikan di skrin. "Sampai" dikira dari
-daftar masuk marshal atau pusat kawalan, atau mana-mana kedudukan kumpulan
-itu dalam 100 m dari titik. Bila checkpoint baharu didedahkan, kompas terus
-disasarkan kepadanya.
+PIN kumpulan, bukan sekadar menyembunyikan di skrin. "Sampai" dikira **hanya**
+dari daftar masuk: marshal menekan *Tiba*, pusat kawalan mencatat laporan
+radio, atau telefon kumpulan itu sendiri dengan kod checkpoint. Kedudukan GPS
+tidak mendedahkan apa-apa, jadi setiap kumpulan wajib lapor diri kepada
+marshal (atau imbas kod) sebelum mendapat checkpoint seterusnya. Bila
+checkpoint baharu didedahkan, kompas terus disasarkan kepadanya.
 
 **Kod checkpoint — pendedahan tanpa isyarat.** Setiap titik ada kod rahsia
 6 aksara (tanpa 0/O/1/I). Semasa ada talian, telefon peserta turut memuat
@@ -123,8 +137,9 @@ talian:
    sekali dan tekan *Tiba* untuk setiap kumpulan. Tanpa isyarat, catatan
    beratur dalam telefon dengan masa sebenar dan dihantar bila ada isyarat.
    Pusat kawalan juga boleh mencatat sendiri (*Tiba* pada baris kumpulan)
-   bila marshal melapor melalui walkie-talkie. Sampai di CP juga dikesan dari
-   GPS (dalam 100 m) sebagai sandaran.
+   bila marshal melapor melalui walkie-talkie. Daftar masuk inilah yang
+   mendedahkan checkpoint seterusnya kepada kumpulan; GPS hanya untuk
+   pemantauan dan amaran LEWAT, bukan pendedahan.
 3. **Sandaran SMS, sebahagian daripada aliran SOS.** SMS lalu pada isyarat
    yang jauh lebih lemah daripada data. Butang **SOS** menghantar melalui
    internet bila ada talian; bila tiada, app **terus membuka SMS** dengan
@@ -278,7 +293,9 @@ design/                 bundle serahan Claude Design (rujukan)
 | PUT | `/api/state` | kunci | ganti checkpoint + laluan (`from`, `to` = id titik; `to` mesti checkpoint) |
 | PUT | `/api/groups` | kunci | ganti senarai kumpulan; masa mula dan PIN dikekalkan jika tidak dihantar, `resetPin: true` jana PIN baharu; pulang PIN setiap kumpulan |
 | POST | `/api/groups/login` | telefon | `{ pin }` → kumpulan yang memiliki PIN itu |
-| PUT | `/api/settings` | kunci | nombor SMS, PIN marshal |
+| PUT | `/api/settings` | kunci | nombor SMS, PIN marshal, nama program |
+| GET | `/api/archive` | kunci | semua jadual sebagai JSON — rekod program, dimuat turun sebelum menamatkannya |
+| POST | `/api/program/reset` | kunci | tamatkan program: padam kedudukan dan daftar masuk (dan kumpulan / checkpoint ikut skop `records`, `groups`, `all`), kod baharu jika diminta, naikkan *epoch* supaya setiap telefon masuk semula |
 | POST | `/api/positions` | telefon (PIN kumpulan) atau kunci | hantar sekumpulan kedudukan (`source: 'sms'` untuk yang ditaip); pulang `revealed` = bilangan titik yang kumpulan itu boleh lihat |
 | GET | `/api/positions?trail=N` | kunci **atau** PIN | kedudukan terkini, daftar masuk dan masa mula setiap kumpulan + N jejak; PIN kumpulan hanya untuk kunci |
 | GET | `/api/track?group=ID` | kunci | semua kedudukan yang dirakam untuk satu kumpulan, dari awal (jejak penuh, eksport GPX / CSV) |
@@ -294,7 +311,7 @@ Melayu dan dipaparkan terus dalam app.
 
 | Cache | Isi | Dibuang bila |
 | --- | --- | --- |
-| `jl-shell-v43` | fail app + salinan terakhir `/api/state` | versi baharu digunakan |
+| `jl-shell-v44` | fail app + salinan terakhir `/api/state` | versi baharu digunakan |
 | `jl-tiles-v1` | tile kawasan program, dimuat turun **sendiri** oleh `autocache.js` | hanya melalui butang *Kosongkan* |
 | `jl-tiles-auto-v1` | tile yang terpapar semasa melayari | automatik, melebihi 1500 tile |
 

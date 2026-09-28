@@ -3,6 +3,7 @@
    and is cached on the phone so the map still opens without signal. */
 
 import { boot, $, groupLabel } from './core.js';
+import { epochChanged } from './store.js';
 import { getState, loginGroup, postCheckins } from './api.js';
 import { loadGroup, saveGroup, loadGroupPin, saveGroupPin, deviceId, saveState,
   loadUnlocked, saveUnlocked, loadCodeQueue, saveCodeQueue } from './store.js';
@@ -39,6 +40,14 @@ async function syncState() {
   try {
     // With the group's PIN the server reveals checkpoints as the group reaches them.
     const next = await getState(groupPin ? { groupPin } : {});
+    if (epochChanged(next.settings)) {
+      // The command centre ended the program: this phone's group, opened
+      // checkpoints and queues belong to the old one.
+      logoutGroup();
+      notify({ title: 'Program baharu', body: 'Pusat kawalan telah memulakan program baharu. Masukkan PIN kumpulan anda untuk program ini.' }).then(chooseGroup);
+      return false;
+    }
+    if (next.settings && next.settings.eventName) document.title = next.settings.eventName + ' — Jalan Lasak';
     mergeUnlocked(next);
     const before = core.state.points.map((p) => p.id);
     const after = (next.points || []).map((p) => p.id);
