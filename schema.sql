@@ -18,7 +18,9 @@ CREATE TABLE IF NOT EXISTS programs (
   notes      TEXT,
   created_at INTEGER NOT NULL,
   ended_at   INTEGER,         -- ms epoch; set when the program is closed
-  seq        INTEGER NOT NULL
+  seq        INTEGER NOT NULL,
+  series_id  TEXT,            -- the days of one event share this (the first day's id)
+  day        INTEGER          -- 1, 2, 3 … within the series
 );
 
 -- Program points: the start and every checkpoint, in display order.
@@ -65,7 +67,7 @@ CREATE TABLE IF NOT EXISTS groups (
   pin        TEXT,
   PRIMARY KEY (program_id, id)
 );
-CREATE UNIQUE INDEX IF NOT EXISTS groups_pin ON groups (pin);   -- unique across programs
+CREATE UNIQUE INDEX IF NOT EXISTS groups_program_pin ON groups (program_id, pin);   -- days of one event share PINs
 
 -- Every reported fix, kept for the whole event so the trail can be replayed.
 CREATE TABLE IF NOT EXISTS positions (

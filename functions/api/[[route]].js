@@ -52,6 +52,9 @@
                                   checkpoints and routes with fresh codes when copyPoints
      PUT  /api/programs/:id       { name?, place?, date?, notes? } → { program }   CC
      POST /api/programs/:id/activate   make an earlier program the active one again   CC
+     POST /api/programs/:id/day   { name?, date?, copyPoints? } → { program }   CC
+                                  the next day of a multi-day program: same groups and PINs, its own
+                                  checkpoints, routes, start times and records; becomes active
      POST /api/program/end        { endedAt?: ms | null } → { version, endedAt }   CC
                                   closes the active program at that time (default now; null reopens)
      POST /api/positions          { group, pin, device, items[] } → { version, saved, revealed }   group PIN or CC
@@ -228,7 +231,9 @@ const bumpEpoch = (db) => setMeta(db, 'epoch', String(Date.now()));
 
 const programOut = (r) => r && ({
   id: r.id, name: r.name, place: r.place || '', date: r.event_date || '', notes: r.notes || '',
-  createdAt: r.created_at, endedAt: r.ended_at || null
+  createdAt: r.created_at, endedAt: r.ended_at || null,
+  // days of one event share a series; day counts from 1
+  seriesId: r.series_id || r.id, day: r.day || 1
 });
 
 async function getProgram(db, id) {
@@ -247,8 +252,8 @@ async function activeProgram(db) {
   if (!row) {
     const pid = 'p_' + Date.now().toString(36);
     await db.batch([
-      db.prepare('INSERT INTO programs (id, name, place, event_date, notes, created_at, ended_at, seq) VALUES (?, ?, ?, ?, ?, ?, NULL, 1)')
-        .bind(pid, 'Program 1', '', '', '', Date.now()),
+      db.prepare('INSERT INTO programs (id, name, place, event_date, notes, created_at, ended_at, seq, series_id, day) VALUES (?, ?, ?, ?, ?, ?, NULL, 1, ?, 1)')
+        .bind(pid, 'Program 1', '', '', '', Date.now(), pid),
       db.prepare('INSERT INTO points (program_id, id, type, name, lat, lng, seq) VALUES (?, ?, ?, ?, ?, ?, 0)')
         .bind(pid, DEFAULT_START.id, 'start', DEFAULT_START.name, DEFAULT_START.lat, DEFAULT_START.lng)
     ]);
@@ -488,7 +493,7 @@ async function putState(request, env) {
  * since this client last synced), null → clear, number → set.
  * Each group's PIN is kept too; a new group gets a fresh one, and
  * `resetPin: true` mints a new one for an existing group (e.g. a leaked PIN).
- * PINs are unique across every program, so an old sheet never opens a new one.
+ * A PIN only opens the active program, so an old sheet never opens a new one.
  * The response carries every group's PIN so the command centre can show it.
  */
 async function putGroups(request, env) {
@@ -497,16 +502,13 @@ async function putGroups(request, env) {
   if (!Array.isArray(body.groups)) throw new HttpError(400, 'Perlukan senarai groups.');
   const db = env.DB;
   const pid = (await activeProgram(db)).id;
-  const [existing, allPins] = await Promise.all([
-    db.prepare('SELECT id, started_at, pin FROM groups WHERE program_id = ?').bind(pid).all(),
-    db.prepare('SELECT pin FROM groups WHERE program_id <> ?').bind(pid).all()
-  ]);
+  const existing = await db.prepare('SELECT id, started_at, pin FROM groups WHERE program_id = ?').bind(pid).all();
   const startedBefore = new Map(existing.results.map((g) => [g.id, g.started_at]));
   const pinBefore = new Map(existing.results.map((g) => [g.id, g.pin]));
 
   const stmts = [db.prepare('DELETE FROM groups WHERE program_id = ?').bind(pid)];
   const seen = new Set();
-  const taken = new Set(allPins.results.map((g) => g.pin).filter(isPin));
+  const taken = new Set();   // PINs are unique within a program; the days of one event share them
   const pins = [];
   const now = Date.now();
   body.groups.forEach((g, i) => {
@@ -534,8 +536,7 @@ async function ensurePins(db, pid) {
   const rows = await db.prepare('SELECT id, pin FROM groups WHERE program_id = ?').bind(pid).all();
   const missing = rows.results.filter((g) => !isPin(g.pin));
   if (!missing.length) return;
-  const every = await db.prepare('SELECT pin FROM groups').all();
-  const taken = new Set(every.results.map((g) => g.pin).filter(isPin));
+  const taken = new Set(rows.results.map((g) => g.pin).filter(isPin));
   await db.batch(missing.map((g) =>
     db.prepare('UPDATE groups SET pin = ? WHERE program_id = ? AND id = ?').bind(newPin(taken), pid, g.id)));
 }
@@ -825,8 +826,8 @@ async function createProgram(request, env) {
   const pid = 'p_' + Date.now().toString(36);
   const seqRow = await db.prepare('SELECT COALESCE(MAX(seq), 0) + 1 AS seq FROM programs').first();
   const stmts = [
-    db.prepare('INSERT INTO programs (id, name, place, event_date, notes, created_at, ended_at, seq) VALUES (?, ?, ?, ?, ?, ?, NULL, ?)')
-      .bind(pid, f.name, f.place, f.date, f.notes, Date.now(), seqRow.seq)
+    db.prepare('INSERT INTO programs (id, name, place, event_date, notes, created_at, ended_at, seq, series_id, day) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, 1)')
+      .bind(pid, f.name, f.place, f.date, f.notes, Date.now(), seqRow.seq, pid)
   ];
   if (body.copyPoints) {
     const [points, routes] = await Promise.all([
@@ -868,6 +869,75 @@ async function updateProgram(request, env, id) {
     bumpVersion(db)
   ]);
   return json({ version: await getVersion(db), program: programOut(await getProgram(db, id)) });
+}
+
+/** "Jalan Lasak KKB — Hari 2" → "Jalan Lasak KKB". */
+const baseName = (name) => name.replace(/\s+[—-]+\s+Hari\s+\d+$/i, '').trim();
+
+/** YYYY-MM-DD plus n days, or '' when there is no date to count from. */
+function shiftDate(date, n) {
+  if (!isDate(date)) return '';
+  const d = new Date(date + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * The next day of a multi-day event. It is a program of its own (its own
+ * checkpoints, routes, start times and records) in the same series as the
+ * one given, with the same groups and PINs so the phones stay logged in.
+ * It becomes active; copyPoints carries the checkpoints and routes over
+ * with fresh codes, otherwise only MULA comes along, to be moved.
+ */
+async function addProgramDay(request, env, id) {
+  requireCC(request, env);
+  if (!isId(id)) throw new HttpError(400, 'ID program tidak sah.');
+  const db = env.DB;
+  const parent = await getProgram(db, id);
+  if (!parent) throw new HttpError(404, 'Program tidak wujud.');
+  const body = await readJson(request);
+  const series = parent.series_id || parent.id;
+  const last = await db.prepare('SELECT MAX(day) AS d FROM programs WHERE series_id = ? OR id = ?').bind(series, series).first();
+  const day = (last && last.d ? last.d : 1) + 1;
+  const name = cleanName(body.name, '') || `${baseName(parent.name)} — Hari ${day}`;
+  let date = 'date' in body && body.date !== undefined ? cleanText(body.date, 10) : shiftDate(parent.event_date, day - (parent.day || 1));
+  if (date && !isDate(date)) throw new HttpError(400, 'Tarikh mesti dalam bentuk YYYY-MM-DD.');
+  const pid = 'p_' + Date.now().toString(36);
+  const seqRow = await db.prepare('SELECT COALESCE(MAX(seq), 0) + 1 AS seq FROM programs').first();
+  const stmts = [
+    db.prepare('INSERT INTO programs (id, name, place, event_date, notes, created_at, ended_at, seq, series_id, day) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)')
+      .bind(pid, name, parent.place || '', date, parent.notes || '', Date.now(), seqRow.seq, series, day)
+  ];
+  const groups = await db.prepare('SELECT * FROM groups WHERE program_id = ? ORDER BY seq').bind(parent.id).all();
+  for (const g of groups.results) {
+    stmts.push(db.prepare('INSERT INTO groups (program_id, id, name, seq, started_at, pin) VALUES (?, ?, ?, ?, NULL, ?)')
+      .bind(pid, g.id, g.name, g.seq, g.pin));
+  }
+  if (body.copyPoints) {
+    const [points, routes] = await Promise.all([
+      db.prepare('SELECT * FROM points WHERE program_id = ? ORDER BY seq').bind(parent.id).all(),
+      db.prepare('SELECT * FROM routes WHERE program_id = ? ORDER BY seq').bind(parent.id).all()
+    ]);
+    const taken = new Set();
+    for (const p of points.results) {
+      stmts.push(db.prepare('INSERT INTO points (program_id, id, type, name, lat, lng, seq, eta_min, code) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        .bind(pid, p.id, p.type, p.name, p.lat, p.lng, p.seq, p.eta_min, newCode(taken)));
+    }
+    for (const r of routes.results) {
+      stmts.push(db.prepare('INSERT INTO routes (program_id, id, name, latlngs, seq, from_id, to_id) VALUES (?, ?, ?, ?, ?, ?, ?)')
+        .bind(pid, r.id, r.name, r.latlngs, r.seq, r.from_id, r.to_id));
+    }
+  } else {
+    const start = await db.prepare("SELECT * FROM points WHERE program_id = ? AND type = 'start'").bind(parent.id).first();
+    const s = start || DEFAULT_START;
+    stmts.push(db.prepare('INSERT INTO points (program_id, id, type, name, lat, lng, seq) VALUES (?, ?, ?, ?, ?, ?, 0)')
+      .bind(pid, 'start', 'start', s.name, s.lat, s.lng));
+  }
+  stmts.push(setMeta(db, 'active_program', pid));
+  stmts.push(bumpEpoch(db));
+  stmts.push(bumpVersion(db));
+  await db.batch(stmts);
+  return json({ version: await getVersion(db), program: programOut(await getProgram(db, pid)) });
 }
 
 /** Make an earlier program the active one again (phones log out and re-enter). */
@@ -921,9 +991,10 @@ export async function onRequest({ request, env }) {
     if (route === 'checkins' && method === 'POST') return await postCheckins(request, env);
     if (route === 'programs' && method === 'GET') return await listPrograms(request, env);
     if (route === 'programs' && method === 'POST') return await createProgram(request, env);
-    const m = route.match(/^programs\/([\w-]+)(?:\/(activate))?$/);
+    const m = route.match(/^programs\/([\w-]+)(?:\/(activate|day))?$/);
     if (m && !m[2] && method === 'PUT') return await updateProgram(request, env, m[1]);
     if (m && m[2] === 'activate' && method === 'POST') return await activateProgram(request, env, m[1]);
+    if (m && m[2] === 'day' && method === 'POST') return await addProgramDay(request, env, m[1]);
     if (route === 'program/end' && method === 'POST') return await endProgram(request, env);
     if (route === 'ping') return json({ ok: true, now: Date.now() });
 

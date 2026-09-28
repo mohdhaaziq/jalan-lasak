@@ -96,6 +96,10 @@ export const createProgram = (key, { name, place = '', date = '', notes = '', co
 export const updateProgram = (key, id, fields) =>
   call('programs/' + encodeURIComponent(id), { method: 'PUT', key, body: fields });
 
+/** The next day of a multi-day event: same groups and PINs, its own checkpoints and records; becomes active. */
+export const addProgramDay = (key, id, { name = '', date, copyPoints = false } = {}) =>
+  call('programs/' + encodeURIComponent(id) + '/day', { method: 'POST', key, body: { name, ...(date !== undefined ? { date } : {}), copyPoints } });
+
 /** Make an earlier program the active one again. */
 export const activateProgram = (key, id) =>
   call('programs/' + encodeURIComponent(id) + '/activate', { method: 'POST', key, body: {} });

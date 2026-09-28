@@ -53,11 +53,12 @@ async function syncState() {
   try {
     const next = await getState(pin ? { pin } : {});
     if (epochChanged(next.settings)) {
-      // A new program: forget this phone's PIN, checkpoint and undelivered check-ins, then start over.
-      pin = ''; point = '';
-      saveMarshal({ pin: '', point: '' });
+      // A new program or day: the marshal PIN stays (it is not per program), but
+      // the chosen checkpoint and any undelivered check-ins belong to the old one.
+      point = '';
+      saveMarshal({ point: '' });
       queue = []; saveCheckinQueue(queue);
-      await notify({ title: 'Program baharu', body: 'Pusat kawalan telah memulakan program baharu. Masukkan PIN marshal dan pilih checkpoint anda semula.' });
+      await notify({ title: 'Program baharu', body: 'Pusat kawalan telah memulakan program baharu. Pilih checkpoint anda untuk program ini.' });
       location.reload();
       return false;
     }

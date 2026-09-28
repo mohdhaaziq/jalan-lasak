@@ -81,9 +81,13 @@ aktif, dengan pilihan menyalin checkpoint dan laluan (kod baharu dijana) atau
 bermula dengan MULA sahaja; **Semua program** menyenaraikan setiap program
 dengan kiraannya, untuk dilihat baca sahaja (`?program=ID` pada bacaan) atau
 dijadikan aktif semula. Pelayan menaikkan *epoch* bila program aktif berubah;
-telefon yang melihat epoch berbeza log keluar sendiri dan meminta PIN semula.
-PIN kumpulan unik merentas semua program, jadi kertas lama tidak membuka
-program baharu.
+telefon yang melihat epoch berbeza mencuba PIN yang tersimpan dahulu dan
+hanya meminta PIN jika ia tidak sah untuk program aktif. **Tambah hari**
+mencipta hari ke-2, ke-3 dan seterusnya bagi program berbilang hari: satu
+siri, setiap hari program sendiri dengan checkpoint, laluan, masa mula dan
+rekodnya, tetapi kumpulan dan PIN yang sama dibawa bersama, jadi telefon
+peserta kekal masuk. PIN hanya membuka program aktif; kertas program lama
+tidak berguna untuk program baharu.
 
 ### Checkpoint didedahkan satu persatu
 
@@ -304,6 +308,7 @@ design/                 bundle serahan Claude Design (rujukan)
 | POST | `/api/programs` | kunci | cipta program seterusnya dan jadikan aktif (`copyPoints` menyalin checkpoint dan laluan dengan kod baharu) |
 | PUT | `/api/programs/:id` | kunci | nama, tempat, tarikh, nota |
 | POST | `/api/programs/:id/activate` | kunci | jadikan program lepas aktif semula |
+| POST | `/api/programs/:id/day` | kunci | hari seterusnya program berbilang hari: kumpulan dan PIN sama, checkpoint, laluan, masa mula dan rekod sendiri; menjadi aktif |
 | POST | `/api/program/end` | kunci | tutup program aktif pada satu masa (lalai sekarang; `null` buka semula): rekod kekal, telefon log keluar, masuk dan laporan selepas itu ditolak (409) |
 | POST | `/api/positions` | telefon (PIN kumpulan) atau kunci | hantar sekumpulan kedudukan (`source: 'sms'` untuk yang ditaip); pulang `revealed` = bilangan titik yang kumpulan itu boleh lihat |
 | GET | `/api/positions?trail=N` | kunci **atau** PIN | kedudukan terkini, daftar masuk dan masa mula setiap kumpulan + N jejak; PIN kumpulan hanya untuk kunci |
@@ -320,7 +325,7 @@ Melayu dan dipaparkan terus dalam app.
 
 | Cache | Isi | Dibuang bila |
 | --- | --- | --- |
-| `jl-shell-v47` | fail app + salinan terakhir `/api/state` | versi baharu digunakan |
+| `jl-shell-v48` | fail app + salinan terakhir `/api/state` | versi baharu digunakan |
 | `jl-tiles-v1` | tile kawasan program, dimuat turun **sendiri** oleh `autocache.js` | hanya melalui butang *Kosongkan* |
 | `jl-tiles-auto-v1` | tile yang terpapar semasa melayari | automatik, melebihi 1500 tile |
 

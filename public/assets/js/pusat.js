@@ -5,7 +5,7 @@
 
 import { boot, $, el, isStart, groupLabel, cardinal } from './core.js';
 import { mountEditing } from './edit.js';
-import { getState, putState, putGroups, putSettings, getPositions, postPositions, postCheckins, getTrack, endProgram, getPrograms, createProgram, updateProgram, activateProgram } from './api.js';
+import { getState, putState, putGroups, putSettings, getPositions, postPositions, postCheckins, getTrack, endProgram, getPrograms, createProgram, updateProgram, activateProgram, addProgramDay } from './api.js';
 import { loadCCKey, saveCCKey, saveState } from './store.js';
 import { askText, askChoice, askConfirm, notify, toast } from './ui.js';
 import { distM, fmtDist, bearing } from './geo.js';
@@ -327,7 +327,8 @@ function renderGroups() {
   if (p.name) document.title = p.name + ' — Pusat kawalan';
   const ended = Number.isFinite(p.endedAt) && p.endedAt;
   $('progname').textContent = p.name || 'Program';
-  $('progmeta').textContent = [p.place, p.date].filter(Boolean).join(' · ') || 'tempat dan tarikh belum diisi';
+  $('progmeta').textContent = [p.place, p.date, p.day > 1 ? 'Hari ' + p.day : ''].filter(Boolean).join(' · ') || 'tempat dan tarikh belum diisi';
+  $('btnAddDay').disabled = !!viewing;
   $('progstat').textContent = ended
     ? 'Tamat ' + new Date(ended).toLocaleString('ms-MY', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) + ' · telefon tidak lagi boleh masuk atau melapor'
     : 'Sedang berjalan · telefon boleh masuk dan melapor';
@@ -487,6 +488,34 @@ $('btnNewProgram').addEventListener('click', async () => {
     const r = await withKey(() => createProgram(key, { ...f, copyPoints: copy === 'copy' }));
     await afterProgramChange('Program baharu dimulakan: ' + r.program.name + '. Tambah kumpulan dan edarkan PIN.');
   } catch (err) { notify({ title: 'Gagal memulakan program', body: err.message }); }
+});
+
+$('btnAddDay').addEventListener('click', async () => {
+  if (readOnly()) return;
+  const p = (state.settings && state.settings.program) || {};
+  const nextDay = (p.day || 1) + 1;
+  const guess = p.date ? (() => { const d = new Date(p.date + 'T00:00:00'); d.setDate(d.getDate() + 1); return `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`; })() : '';
+  const dateText = await askText({
+    title: 'Hari ' + nextDay + ' untuk ' + p.name.replace(/\s+[—-]+\s+Hari\s+\d+$/i, ''),
+    body: 'Kumpulan dan PIN yang sama dibawa ke hari ini; telefon peserta kekal masuk. Checkpoint, laluan, masa mula dan rekod hari ini berasingan. Hari ini menjadi program aktif.',
+    value: guess, placeholder: '26/9/2026', label: 'Tarikh hari ' + nextDay, okLabel: 'Seterusnya'
+  });
+  if (dateText === null) return;
+  const date = parseDate(dateText);
+  if (date === null) { notify({ title: 'Tarikh tidak difahami', body: 'Taip seperti 26/9/2026.' }); return; }
+  const copy = await askChoice({
+    title: 'Checkpoint hari ' + nextDay,
+    options: [
+      { value: 'fresh', label: 'Mula kosong: MULA sahaja, letak checkpoint hari ini di peta' },
+      { value: 'copy', label: 'Salin checkpoint dan laluan hari ' + (p.day || 1) + ' (kod baharu)' }
+    ],
+    cancelLabel: 'Batal'
+  });
+  if (!copy) return;
+  try {
+    const r = await withKey(() => addProgramDay(key, p.id, { date, copyPoints: copy === 'copy' }));
+    await afterProgramChange(r.program.name + ' dimulakan. Letak checkpoint hari ini, kemudian tekan Mula bila kumpulan bertolak.');
+  } catch (err) { notify({ title: 'Gagal tambah hari', body: err.message }); }
 });
 
 $('btnPrograms').addEventListener('click', async () => {

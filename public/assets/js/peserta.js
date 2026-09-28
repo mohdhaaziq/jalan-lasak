@@ -39,13 +39,28 @@ async function syncState() {
   syncing = true;
   try {
     // With the group's PIN the server reveals checkpoints as the group reaches them.
-    const next = await getState(groupPin ? { groupPin } : {});
+    let next = await getState(groupPin ? { groupPin } : {});
     if (epochChanged(next.settings)) {
-      // The command centre ended the program: this phone's group, opened
-      // checkpoints and queues belong to the old one.
+      // The command centre moved to another program (or day): the opened
+      // checkpoints and queues on this phone belong to the old one. The
+      // same PIN carries over between the days of one event, so try it
+      // before asking anyone to type.
+      const pin = groupPin;
       logoutGroup();
-      notify({ title: 'Program baharu', body: 'Pusat kawalan telah memulakan program baharu. Masukkan PIN kumpulan anda untuk program ini.' }).then(chooseGroup);
-      return false;
+      let found = null;
+      if (pin) { try { found = await loginGroup(pin); } catch { found = null; } }
+      if (!found) {
+        notify({ title: 'Program baharu', body: 'Pusat kawalan telah memulakan program baharu. Masukkan PIN kumpulan anda untuk program ini.' }).then(chooseGroup);
+        return false;
+      }
+      group = found.id;
+      groupPin = pin;
+      saveGroup(group);
+      saveGroupPin(pin);
+      reporter.start();
+      next = await getState({ groupPin });
+      const p = next.settings && next.settings.program;
+      toast('Program baharu: ' + (p && p.name ? p.name : found.name) + '. Telefon ini kekal sebagai ' + found.name + '.', 6000);
     }
     if (next.settings && next.settings.eventName) document.title = next.settings.eventName + ' — Jalan Lasak';
     mergeUnlocked(next);
