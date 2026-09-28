@@ -125,6 +125,14 @@ async function push() {
   }
 }
 
+/** True once the program being shown has been closed: its schedule is history, so nothing is late any more. */
+function programClosed() {
+  const p = state.settings && state.settings.program;
+  return !!(p && p.endedAt && p.endedAt <= (serverNow || Date.now()));
+}
+/** lateness(), except that a closed program has no LEWAT. */
+const late = (status) => (programClosed() ? null : lateness(status));
+
 /* ── looking back at an earlier program: reads are redirected, writes refused ── */
 let viewing = '';   // a program id while the command centre looks at a past program; '' = the active one
 function readOnly() {
@@ -710,7 +718,7 @@ function scheduleLine(g, status) {
     const late = status.lateMs > 0;
     parts.push(pointName(status.next.point) + ' dijangka ' + clock(status.next.expectedAt) +
       (late ? ' — LEWAT ' + minutes(status.lateMs) : ' — dalam ' + minutes(status.lateMs)));
-    return { text: parts.join(' · '), cls: lateness(status) || '' };
+    return { text: parts.join(' · '), cls: late(status) || '' };
   }
   return { text: parts.join(' · ') || 'Bertolak ' + clock(g.startedAt), cls: '' };
 }
@@ -742,7 +750,7 @@ function renderPositions() {
   const statuses = new Map(positions.map((g) => [g.id, scheduleFor(g, state.points, serverNow)]));
   const rank = (g) => {
     if (g.last && g.last.sos) return 0;
-    const late = lateness(statuses.get(g.id));
+    const late = late(statuses.get(g.id));
     const stale = staleness(g.last);
     if (late === 'bad') return 1;
     if (stale === 'bad') return 2;
@@ -760,7 +768,7 @@ function renderPositions() {
   sorted.forEach(({ g, i }) => {
     const st = staleness(g.last);
     const status = statuses.get(g.id);
-    const late = lateness(status);
+    const late = late(status);
     const row = el('div', 'row pos ' + st + (late ? ' late-' + late : '') +
       (g.last && g.last.sos ? ' sos' : '') + (g.id === selectedGroup ? ' sel' : ''));
     row.setAttribute('role', 'button');
@@ -1155,7 +1163,8 @@ renderAlarmRow();
 
 function renderAlert(statuses) {
   const parts = [];
-  for (const g of positions) {
+  // A closed program raises nothing: no SOS can arrive, and the schedule is over.
+  for (const g of programClosed() ? [] : positions) {
     if (g.last && g.last.sos) {
       const near = nearestPoint(g.last);
       parts.push('SOS ' + g.name + ' · ' + ago(serverNow - g.last.at) +
@@ -1165,7 +1174,7 @@ function renderAlert(statuses) {
   let lateBad = false;
   for (const g of positions) {
     const st = statuses.get(g.id);
-    if (lateness(st) === 'bad') {
+    if (late(st) === 'bad') {
       lateBad = true;
       parts.push('LEWAT ' + g.name + ' · ' + pointName(st.next.point) + ' dijangka ' + clock(st.next.expectedAt) +
         ' · ' + minutes(st.lateMs) + (g.last ? ' · dilihat ' + ago(serverNow - g.last.at) : ' · tiada kedudukan'));
@@ -1197,7 +1206,7 @@ $('btnAlertMore').addEventListener('click', () => {
 
 alertText.addEventListener('click', () => {
   const g = positions.find((x) => x.last && x.last.sos) ||
-    positions.find((x) => lateness(scheduleFor(x, state.points, serverNow)) === 'bad' && x.last);
+    positions.find((x) => late(scheduleFor(x, state.points, serverNow)) === 'bad' && x.last);
   if (g && selectedGroup !== g.id) selectGroup(g.id);
 });
 
