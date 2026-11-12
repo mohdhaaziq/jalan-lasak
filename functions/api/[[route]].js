@@ -657,11 +657,12 @@ async function getPositions(request, env, url) {
   const byGroup = new Map(groups.map((g) => [g.id, g]));
 
   const checkins = await db.prepare(
-    'SELECT group_id, point_id, source, note, recorded_at FROM checkins WHERE program_id = ? ORDER BY recorded_at'
+    'SELECT group_id, point_id, source, device, note, recorded_at FROM checkins WHERE program_id = ? ORDER BY recorded_at'
   ).bind(pid).all();
   for (const c of checkins.results) {
     const g = byGroup.get(c.group_id);
-    if (g) g.checkins.push({ point: c.point_id, at: c.recorded_at, source: c.source, note: c.note || '' });
+    // device lets each marshal phone tell its own records from another marshal's at the same point
+    if (g) g.checkins.push({ point: c.point_id, at: c.recorded_at, source: c.source, device: c.device || null, note: c.note || '' });
   }
 
   if (trail > 0) {

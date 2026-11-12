@@ -387,11 +387,25 @@ $('btnPoint').addEventListener('click', choosePoint);
 
 /* ── check-ins ──────────────────────────────────────────────────────── */
 
-/** Which groups this phone has recorded at the current point, latest first. */
+/** Which groups have arrived at the current point, by anyone: this phone,
+    another marshal at the same point, the group's own code, or the command
+    centre. Every marshal at a point sees the same list. group → { at, by },
+    `at` the first arrival, `by` a label when it was not this phone. */
 function recordedHere() {
   const map = new Map();
-  for (const c of queue.concat(sent)) {
-    if (c.point === point && (!map.has(c.group) || c.at > map.get(c.group))) map.set(c.group, c.at);
+  const add = (group, at, by) => {
+    const had = map.get(group);
+    if (!had || at < had.at) map.set(group, { at, by });
+  };
+  for (const c of queue.concat(sent)) if (c.point === point) add(c.group, c.at, '');
+  for (const g of positions) {
+    for (const c of g.checkins || []) {
+      if (c.point !== point) continue;
+      const by = c.source === 'qr' ? 'kod kumpulan'
+        : c.source === 'cc' ? 'pusat kawalan'
+        : c.device === device ? '' : 'marshal lain';
+      add(g.id, c.at, by);
+    }
   }
   return map;
 }
@@ -404,7 +418,7 @@ async function record(groupId) {
   if (already) {
     const ok = await askConfirm({
       title: 'Catat sekali lagi?',
-      body: g.name + ' sudah dicatat di sini pada ' + clock(already) + '.',
+      body: g.name + ' sudah dicatat di sini pada ' + clock(already.at) + (already.by ? ' (' + already.by + ')' : '') + '.',
       okLabel: 'Catat lagi'
     });
     if (!ok) return;
@@ -432,6 +446,7 @@ async function flush() {
     saveCheckinQueue(queue);
     lastDelivered = Date.now();
     lastError = '';
+    pollPositions();
   } catch (err) {
     if (err.status === 401) {
       pin = '';
@@ -517,7 +532,7 @@ function render() {
       ? fmtDist(distM(last, p)) + ' dari sini · ' + ago(serverNow - last.at) + (last.sos ? ' · SOS' : '')
       : 'Belum ada kedudukan';
     text.append(el('span', 'nm', (last && last.sos ? 'SOS — ' : '') + g.name), el('br'),
-      el('span', 'co', (at ? 'Tiba ' + clock(at) : 'Belum tiba') + ' · ' + where));
+      el('span', 'co', (at ? 'Tiba ' + clock(at.at) + (at.by ? ' (' + at.by + ')' : '') : 'Belum tiba') + ' · ' + where));
     // How long until they get here, at the pace they are actually walking.
     const pg = positions.find((x) => x.id === g.id);
     if (pg && pg.last && !at) {
