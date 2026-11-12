@@ -270,11 +270,11 @@ async function startGroup(id, on) {
   const g = state.groups.find((x) => x.id === id);
   if (!g) return;
   if (!on) {
-    const ok = await askConfirm({ title: 'Set semula masa mula?', body: g.name + ' — jadualnya tidak akan dikira sehingga bertolak semula.', okLabel: 'Set semula' });
+    const ok = await askConfirm({ title: 'Set semula ke belum mula?', body: g.name + ' — masa mula dan semua catatan tiba kumpulan ini (MULA dan checkpoint) dibuang. Jadualnya tidak dikira sehingga bertolak semula.', okLabel: 'Set semula' });
     if (!ok) return;
   }
   await saveGroups({ [id]: on ? Date.now() : null });
-  toast(on ? g.name + ' bertolak ' + clock(Date.now()) : 'Masa mula ' + g.name + ' dibuang.');
+  toast(on ? g.name + ' bertolak ' + clock(Date.now()) : g.name + ' kembali belum mula.');
 }
 
 // Groups are released one at a time, each from the Mula button on its own
@@ -836,7 +836,9 @@ function renderPositions() {
       start.type = 'button';
       start.addEventListener('click', stop(() => startGroup(g.id, true)));
       acts.append(start);
-    } else {
+    }
+    // Ticks without a start (a test press at MULA, say) can be cleared too.
+    if (status.started || status.reached.size) {
       const reset = el('button', 'jl-btn sm', 'Set semula');
       reset.type = 'button';
       reset.title = 'Buang masa mula';

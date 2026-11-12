@@ -4,7 +4,7 @@
    checkpoint it was due at is not. So lateness is judged against the plan
    (each checkpoint's minutes-from-start, and the group's own start time), and
    "reached" is taken from a check-in first, and from any GPS fix within
-   REACHED_M of the point as a fallback. */
+   REACHED_M of the point, taken after the group set off, as a fallback. */
 
 import { distM, remainingAlong } from './geo.js';
 
@@ -25,17 +25,20 @@ export function scheduleFor(group, points, now = Date.now()) {
   for (const c of group.checkins || []) {
     if (!reached.has(c.point) || c.at < reached.get(c.point).at) reached.set(c.point, { at: c.at, how: 'checkin' });
   }
-  const fixes = (group.trail || []).map((t) => ({ lat: t[0], lng: t[1], at: t[2] }));
-  if (group.last) fixes.push({ lat: group.last.lat, lng: group.last.lng, at: group.last.at });
+  const started = Number.isFinite(group.startedAt);
+  // GPS counts only once the group has set off: a phone waiting at the car
+  // park is within reach of MULA but has not reached anything yet.
+  const fixes = started ? (group.trail || []).map((t) => ({ lat: t[0], lng: t[1], at: t[2] })) : [];
+  if (started && group.last) fixes.push({ lat: group.last.lat, lng: group.last.lng, at: group.last.at });
+  const after = fixes.filter((f) => f.at >= group.startedAt);
   for (const p of points) {
     if (reached.has(p.id)) continue;
-    const hit = fixes.find((f) => distM(f, p) <= REACHED_M);
+    const hit = after.find((f) => distM(f, p) <= REACHED_M);
     if (hit) reached.set(p.id, { at: hit.at, how: 'gps' });
   }
 
   const scheduled = points.filter((p) => p.type !== 'start' && Number.isFinite(p.etaMin));
   const pending = scheduled.find((p) => !reached.has(p.id)) || null;
-  const started = Number.isFinite(group.startedAt);
 
   let next = null;
   let lateMs = 0;

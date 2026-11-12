@@ -308,6 +308,11 @@ async function pollPositions() {
     serverNow = data.now;
     const first = !positions.length && data.groups.some((g) => g.last);
     positions = data.groups;
+    // A delivered tick the server no longer has was undone at the command
+    // centre ("Set semula"); drop it here too. Fresh ones may not be in this
+    // answer yet, so only those sent a minute ago or more.
+    sent = sent.filter((c) => Date.now() - c.sentAt < 60000 ||
+      positions.some((g) => g.id === c.group && (g.checkins || []).some((x) => x.point === c.point && x.device === device)));
     if (first) fitted = false;   // the first fixes widen the picture; frame them once
     const sos = positions.filter((g) => g.last && g.last.sos);
     syncAlarm(sos);
@@ -441,7 +446,8 @@ async function flush() {
   try {
     const items = queue.slice(0, 200);
     await postCheckins({ pin, device, items });
-    sent = sent.concat(items);
+    const now = Date.now();
+    sent = sent.concat(items.map((c) => ({ ...c, sentAt: now })));
     queue = queue.slice(items.length);
     saveCheckinQueue(queue);
     lastDelivered = Date.now();

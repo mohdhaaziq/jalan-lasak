@@ -490,7 +490,8 @@ async function putState(request, env) {
 /**
  * Replace the group list. A group's startedAt is kept unless the request
  * names it: absent → keep what the database has (a marshal may have set it
- * since this client last synced), null → clear, number → set.
+ * since this client last synced), null → clear (with the group's check-ins
+ * in this program), number → set.
  * Each group's PIN is kept too; a new group gets a fresh one, and
  * `resetPin: true` mints a new one for an existing group (e.g. a leaked PIN).
  * A PIN only opens the active program, so an old sheet never opens a new one.
@@ -510,6 +511,7 @@ async function putGroups(request, env) {
   const seen = new Set();
   const taken = new Set();   // PINs are unique within a program; the days of one event share them
   const pins = [];
+  const resets = [];
   const now = Date.now();
   body.groups.forEach((g, i) => {
     if (!g || !isId(g.id)) throw new HttpError(400, `Kumpulan #${i + 1} tidak sah.`);
@@ -517,7 +519,12 @@ async function putGroups(request, env) {
     seen.add(g.id);
     let startedAt;
     if (!('startedAt' in g)) startedAt = startedBefore.get(g.id) ?? null;
-    else if (g.startedAt === null) startedAt = null;
+    else if (g.startedAt === null) {
+      // "Set semula": back to not started. Its check-ins go too, or the
+      // MULA tick would stay and keep revealing Checkpoint 1 to the group.
+      startedAt = null;
+      resets.push(g.id);
+    }
     else if (Number.isFinite(g.startedAt)) startedAt = clientTime(g.startedAt, now);
     else throw new HttpError(400, `Kumpulan #${i + 1}: masa mula tidak sah.`);
     const kept = g.resetPin ? null : pinBefore.get(g.id);
@@ -526,6 +533,7 @@ async function putGroups(request, env) {
     stmts.push(db.prepare('INSERT INTO groups (program_id, id, name, seq, started_at, pin) VALUES (?, ?, ?, ?, ?, ?)')
       .bind(pid, g.id, cleanName(g.name, 'Kumpulan ' + (i + 1)), i, startedAt, pin));
   });
+  for (const id of resets) stmts.push(db.prepare('DELETE FROM checkins WHERE program_id = ? AND group_id = ?').bind(pid, id));
   stmts.push(bumpVersion(db));
   await db.batch(stmts);
   return json({ version: await getVersion(db), groups: pins });
