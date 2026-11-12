@@ -744,9 +744,9 @@ function scheduleLine(g, status) {
     return { text: parts.join(' · '), cls: '' };
   }
   if (status.next && status.next.expectedAt !== null) {
-    const late = status.lateMs > 0;
+    const behind = status.lateMs > 0;
     parts.push(pointName(status.next.point) + ' dijangka ' + clock(status.next.expectedAt) +
-      (late ? ' — LEWAT ' + minutes(status.lateMs) : ' — dalam ' + minutes(status.lateMs)));
+      (behind ? ' — LEWAT ' + minutes(status.lateMs) : ' — dalam ' + minutes(status.lateMs)));
     return { text: parts.join(' · '), cls: late(status) || '' };
   }
   return { text: parts.join(' · ') || 'Bertolak ' + clock(g.startedAt), cls: '' };
@@ -779,11 +779,11 @@ function renderPositions() {
   const statuses = new Map(positions.map((g) => [g.id, scheduleFor(g, state.points, serverNow)]));
   const rank = (g) => {
     if (g.last && g.last.sos) return 0;
-    const late = late(statuses.get(g.id));
+    const lv = late(statuses.get(g.id));
     const stale = staleness(g.last);
-    if (late === 'bad') return 1;
+    if (lv === 'bad') return 1;
     if (stale === 'bad') return 2;
-    if (late === 'warn') return 3;
+    if (lv === 'warn') return 3;
     if (stale === 'warn') return 4;
     if (stale === 'ok') return 5;
     return 6;
@@ -797,8 +797,8 @@ function renderPositions() {
   sorted.forEach(({ g, i }) => {
     const st = staleness(g.last);
     const status = statuses.get(g.id);
-    const late = late(status);
-    const row = el('div', 'row pos ' + st + (late ? ' late-' + late : '') +
+    const lv = late(status);
+    const row = el('div', 'row pos ' + st + (lv ? ' late-' + lv : '') +
       (g.last && g.last.sos ? ' sos' : '') + (g.id === selectedGroup ? ' sel' : ''));
     row.setAttribute('role', 'button');
     row.tabIndex = 0;

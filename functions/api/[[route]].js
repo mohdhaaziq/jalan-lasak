@@ -176,7 +176,7 @@ async function keyFromCode(code, pointId) {
 async function lockPoint(point, code) {
   const key = await keyFromCode(code, point.id);
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const data = textBytes(JSON.stringify({ id: point.id, type: point.type, name: point.name, lat: point.lat, lng: point.lng, etaMin: point.etaMin, seq: point.seq }));
+  const data = textBytes(JSON.stringify({ id: point.id, type: point.type, name: point.name, lat: point.lat, lng: point.lng, seq: point.seq }));
   const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, data));
   const out = new Uint8Array(iv.length + ct.length);
   out.set(iv);
