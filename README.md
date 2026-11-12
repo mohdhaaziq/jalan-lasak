@@ -149,6 +149,10 @@ talian:
    Beberapa marshal boleh berada di CP yang sama: senarai *Tiba* di setiap
    telefon menunjukkan catatan semua sumber di titik itu (telefon ini,
    *marshal lain*, *kod kumpulan*, *pusat kawalan*), dikemas kini setiap 30 s.
+   Kumpulan juga boleh bertolak sendiri dengan mengimbas QR MULA: kod MULA
+   tidak membuka apa-apa di telefon (Checkpoint 1 sudah dipaparkan), jadi
+   app menghantarnya ke pelayan, yang mengesahkan kod dan memulakan jam
+   kumpulan (`source: 'qr'`); perlu isyarat.
    Pusat kawalan juga boleh mencatat sendiri (*Tiba* pada baris kumpulan)
    bila marshal melapor melalui walkie-talkie. Daftar masuk inilah yang
    mendedahkan checkpoint seterusnya kepada kumpulan; GPS hanya untuk
@@ -328,7 +332,7 @@ Melayu dan dipaparkan terus dalam app.
 
 | Cache | Isi | Dibuang bila |
 | --- | --- | --- |
-| `jl-shell-v51` | fail app + salinan terakhir `/api/state` | versi baharu digunakan |
+| `jl-shell-v52` | fail app + salinan terakhir `/api/state` | versi baharu digunakan |
 | `jl-tiles-v1` | tile kawasan program, dimuat turun **sendiri** oleh `autocache.js` | hanya melalui butang *Kosongkan* |
 | `jl-tiles-auto-v1` | tile yang terpapar semasa melayari | automatik, melebihi 1500 tile |
 

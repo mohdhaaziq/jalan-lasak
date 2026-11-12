@@ -161,8 +161,44 @@ async function enterCode(raw) {
     flushCodes();
     return true;
   }
+  if (await startWithCode(code)) return true;
   await notify({ title: 'Kod salah', body: 'Semak kod dengan marshal di checkpoint. Huruf besar kecil tidak penting.' });
   return false;
+}
+
+/** MULA's code opens nothing (Checkpoint 1 is already showing), so the
+    server checks it: the right one records the group setting off and
+    starts its clock. Needs signal; the car park at MULA has it. Resolves
+    true when the code was MULA's, false when it was not or there was no
+    way to tell. */
+async function startWithCode(code) {
+  const start = core.state.points.find((p) => p.type === 'start');
+  if (!start || !groupPin) return false;
+  if (!navigator.onLine) {
+    // Offline and already set off: a code that opens nothing is just wrong.
+    const progress = (core.state.progress && core.state.progress.reached) || [];
+    if (progress.includes(start.id) || unlocked.reached.includes(start.id)) return false;
+    await notify({ title: 'Tiada isyarat', body: 'Jika ini kod MULA, ia perlu isyarat untuk didaftarkan. Cuba lagi bila ada isyarat, atau minta AJK di MULA tekan Tiba.' });
+    return true;   // not "wrong": we could not tell
+  }
+  let result;
+  try {
+    result = await postCheckins({ groupPin, device, items: [{ point: start.id, code, at: Date.now() }] });
+  } catch (err) {
+    if (err.status === 400) return false;   // not MULA's code either
+    await notify({ title: 'Tidak dapat daftar', body: err.message + ' Cuba lagi, atau minta AJK di MULA tekan Tiba.' });
+    return true;
+  }
+  if (!unlocked.reached.includes(start.id)) {
+    unlocked.reached.push(start.id);
+    saveUnlocked(unlocked);
+  }
+  const at = result && result.started && Object.values(result.started)[0];
+  syncState();
+  await notify(at
+    ? { title: 'Bertolak ' + clock(at), body: 'Kumpulan anda dicatat bertolak dari MULA. Jam perjalanan bermula sekarang. Menuju ke Checkpoint 1. Selamat berjalan!' }
+    : { title: 'MULA sudah dicatat', body: 'Kumpulan anda sudah dicatat bertolak sebelum ini. Tiada apa-apa diubah.' });
+  return true;
 }
 
 /** Deliver queued code check-ins; a marshal's record is not needed for these. */
