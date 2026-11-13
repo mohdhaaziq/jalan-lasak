@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS points (
   seq        INTEGER NOT NULL,
   eta_min    INTEGER,
   code       TEXT,
+  unmanned   INTEGER NOT NULL DEFAULT 0,   -- no marshal: GPS at the point opens the next one
   PRIMARY KEY (program_id, id)
 );
 CREATE UNIQUE INDEX IF NOT EXISTS points_code ON points (program_id, code);

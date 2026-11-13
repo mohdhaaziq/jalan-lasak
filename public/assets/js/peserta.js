@@ -9,8 +9,9 @@ import { loadGroup, saveGroup, loadGroupPin, saveGroupPin, deviceId, saveState,
   loadUnlocked, saveUnlocked, loadCodeQueue, saveCodeQueue } from './store.js';
 import { askText, askConfirm, notify, toast } from './ui.js';
 import { createReporter } from './reporter.js';
-import { unlockPoint, normCode, codeFromText, CODE_LEN } from './lock.js';
+import { unlockPoint, normCode, codeFromText, CODE_LEN, AUTO_REACH_M, AUTO_MAX_ACC_M } from './lock.js';
 import { mountTabs } from './tabs.js';
+import { distM } from './geo.js';
 
 const STATE_POLL_MS = 5 * 60 * 1000;
 
@@ -121,6 +122,70 @@ function mergeUnlocked(next) {
   return next;
 }
 
+/** Open the locked point `code` fits, record the point before it as reached
+    (queued as a check-in), and aim the compass at it. The opened point, or null. */
+async function openWith(code, locked) {
+  for (const l of locked) {
+    const point = await unlockPoint(l.blob, code, l.id);
+    if (!point) continue;
+    // The code belongs to the point just before this one: that is where the group stands.
+    const prev = core.state.points.filter((p) => (p.seq ?? 0) < point.seq).pop() || null;
+    unlocked.points[point.id] = point;
+    if (prev) markReached(prev.id, code);
+    saveUnlocked(unlocked);
+    refreshUnlocked();
+    core.setTarget(point.id);
+    flushCodes();
+    return point;
+  }
+  return null;
+}
+
+function markReached(pointId, code) {
+  if (!unlocked.reached.includes(pointId)) unlocked.reached.push(pointId);
+  saveUnlocked(unlocked);
+  codeQueue.push({ point: pointId, code, at: Date.now() });
+  saveCodeQueue(codeQueue);
+}
+
+function refreshUnlocked() {
+  core.applyState(mergeUnlocked({
+    version: core.state.version, points: core.state.points, routes: core.state.routes, groups: core.state.groups,
+    settings: core.state.settings, area: core.state.area, locked: core.state.locked, progress: core.state.progress
+  }));
+}
+
+/* A checkpoint with no marshal carries its own code (`auto`). When GPS puts
+   the phone at it, that code opens the next point, as if typed — offline. */
+let autoBusy = false;
+async function autoArrive(fix) {
+  if (autoBusy || !group || !fix || !Number.isFinite(fix.acc) || fix.acc > AUTO_MAX_ACC_M) return;
+  const reached = new Set([...((core.state.progress && core.state.progress.reached) || []), ...unlocked.reached]);
+  const here = core.state.points.find((p) => p.auto && !reached.has(p.id) && distM(fix, p) <= AUTO_REACH_M);
+  if (!here) return;
+  autoBusy = true;
+  try {
+    const known = new Set(core.state.points.map((p) => p.id));
+    const locked = (core.state.locked || []).filter((l) => !known.has(l.id)).sort((a, b) => a.seq - b.seq);
+    const opened = await openWith(here.auto, locked);
+    if (!opened) {
+      // The next point is already showing (the server revealed it): just record the arrival.
+      markReached(here.id, here.auto);
+      refreshUnlocked();
+      flushCodes();
+    }
+    if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+    notify({
+      title: 'Sampai ' + here.name,
+      body: here.name + ' tiada marshal; ketibaan anda dicatat sendiri.' + (opened ? ' Checkpoint seterusnya dibuka: ' + opened.name + '.' : '')
+    });
+  } finally {
+    autoBusy = false;
+  }
+}
+
+core.hooks.fix = autoArrive;
+
 /** Try `raw` against every locked point; open the one it fits. */
 async function enterCode(raw) {
   const code = normCode(raw);
@@ -140,25 +205,9 @@ async function enterCode(raw) {
     return false;
   }
   toast('Membuka kunci…');
-  for (const l of locked) {
-    const point = await unlockPoint(l.blob, code, l.id);
-    if (!point) continue;
-    // The code belongs to the point just before this one: that is where the group stands.
-    const prev = core.state.points.filter((p) => (p.seq ?? 0) < point.seq).pop() || null;
-    unlocked.points[point.id] = point;
-    if (prev && !unlocked.reached.includes(prev.id)) unlocked.reached.push(prev.id);
-    saveUnlocked(unlocked);
-    if (prev) {
-      codeQueue.push({ point: prev.id, code, at: Date.now() });
-      saveCodeQueue(codeQueue);
-    }
-    core.applyState(mergeUnlocked({
-      version: core.state.version, points: core.state.points, routes: core.state.routes, groups: core.state.groups,
-      settings: core.state.settings, area: core.state.area, locked: core.state.locked, progress: core.state.progress
-    }));
-    core.setTarget(point.id);
+  const point = await openWith(code, locked);
+  if (point) {
     toast('Checkpoint seterusnya dibuka: ' + point.name, 5000);
-    flushCodes();
     return true;
   }
   if (await startWithCode(code)) return true;
@@ -456,7 +505,7 @@ const reporter = createReporter({
   onFix: (fix) => {
     // Facing beam: the direction of travel counts only at walking pace or faster.
     if (fix.heading !== null && fix.speed !== null && fix.speed >= 0.5) core.setCourse(fix.heading);
-    core.setMyPos(fix, fix.acc);
+    core.setMyPos(fix, fix.acc);   // every fix, this one or the map's own, reaches autoArrive via core.hooks.fix
   },
   onStatus: (s) => {
     lastStatus = s;

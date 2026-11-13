@@ -41,7 +41,7 @@ let positions = [];        // [{ id, name, startedAt, last, checkins }] from the
 let serverNow = Date.now();
 
 const pointById = (id) => state.points.find((p) => p.id === id);
-const pointName = (p) => (p.type === 'start' ? 'MULA (bertolak)' : p.name);
+const pointName = (p) => (p.type === 'start' ? 'MULA (bertolak)' : p.name + (p.unmanned ? ' (tiada marshal)' : ''));
 const ago = (ms) => {
   const m = Math.round(ms / 60000);
   return m < 1 ? 'baru sahaja' : m + ' min lalu';

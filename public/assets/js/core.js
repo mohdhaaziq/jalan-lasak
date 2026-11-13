@@ -142,7 +142,7 @@ export function boot({ editable = false } = {}) {
 
   const markers = {};
   const routeLayers = {};
-  const hooks = { change: null, rename: null, remove: null, eta: null, coords: null, mapClick: null, mapHold: null };
+  const hooks = { change: null, rename: null, remove: null, eta: null, coords: null, unmanned: null, fix: null, mapClick: null, mapHold: null };
   let scheduleStart = null;   // this group's start time, for showing ETAs as clock times
 
   const findPoint = (id) => state.points.find((p) => p.id === id);
@@ -317,6 +317,7 @@ export function boot({ editable = false } = {}) {
       const bits = [];
       if (point.code) bits.push('Kod ' + point.code);
       if (!isStart(point)) bits.push(Number.isFinite(point.etaMin) ? 'Dijangka +' + point.etaMin + ' min' : 'Masa belum ditetapkan');
+      if (point.unmanned) bits.push('Tiada marshal: dibuka automatik bila sampai (GPS)');
       if (bits.length) wrap.append(el('div', 'pop-meta', bits.join(' · ')));
     }
 
@@ -337,6 +338,7 @@ export function boot({ editable = false } = {}) {
       edits.append(button('Nama', '', guarded(() => hooks.rename && hooks.rename(point.id))));
       edits.append(button('Koordinat', '', guarded(() => hooks.coords && hooks.coords(point.id))));
       if (!isStart(point)) edits.append(button('Masa', '', guarded(() => hooks.eta && hooks.eta(point.id))));
+      if (!isStart(point) && hooks.unmanned) edits.append(button(point.unmanned ? 'Ada marshal' : 'Tiada marshal', '', guarded(() => hooks.unmanned(point.id))));
       wrap.append(edits);
 
       if (!isStart(point)) {
@@ -538,6 +540,7 @@ export function boot({ editable = false } = {}) {
 
   function setMyPos(latlng, accuracy) {
     myPos = { lat: latlng.lat, lng: latlng.lng };
+    if (hooks.fix) hooks.fix({ lat: latlng.lat, lng: latlng.lng, acc: accuracy });
     const acc = accuracy || 30;
     if (!myMarker) {
       myCircle = L.circle(myPos, {
@@ -714,7 +717,9 @@ export function boot({ editable = false } = {}) {
     if (state.progress && state.progress.more) {
       const last = state.points[state.points.length - 1];
       wrap.append(el('div', 'empty hidden-cp', last && !isStart(last)
-        ? 'Tiba di ' + last.name + '? Masukkan kod yang dipaparkan marshal di situ untuk membuka checkpoint seterusnya — berfungsi tanpa isyarat.'
+        ? (last.auto
+          ? last.name + ' tiada marshal. Bila anda sampai di situ, checkpoint seterusnya dibuka sendiri (GPS) — biarkan app terbuka, berfungsi tanpa isyarat.'
+          : 'Tiba di ' + last.name + '? Masukkan kod yang dipaparkan marshal di situ untuk membuka checkpoint seterusnya — berfungsi tanpa isyarat.')
         : 'Checkpoint pertama didedahkan bila anda masuk dengan PIN kumpulan.'));
     }
 

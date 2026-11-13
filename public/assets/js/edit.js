@@ -6,6 +6,7 @@ import { pathKm, distM, fmtDist } from './geo.js';
 import { askText, askChoice, askConfirm, notify, toast } from './ui.js';
 import { $, isStart, routeLabel } from './core.js';
 import { getState } from './api.js';
+import { AUTO_REACH_M } from './lock.js';
 
 export function mountEditing(core) {
   const { L, map, state } = core;
@@ -265,6 +266,23 @@ export function mountEditing(core) {
     core.rerender();
   }
 
+  /** A checkpoint with no marshal opens the next one on the group's phone by GPS. */
+  async function toggleUnmanned(id) {
+    const point = state.points.find((p) => p.id === id);
+    if (!point) return;
+    const next = state.points[state.points.indexOf(point) + 1];
+    const ok = await askConfirm(point.unmanned
+      ? { title: 'Ada marshal di ' + point.name + '?', body: 'Kumpulan perlu imbas QR atau taip kod marshal di sini untuk membuka checkpoint seterusnya.', okLabel: 'Ada marshal' }
+      : { title: 'Tiada marshal di ' + point.name + '?', body: 'Bila telefon kumpulan sampai dalam ' + AUTO_REACH_M + ' m dari titik ini (GPS), ' + (next ? next.name : 'checkpoint seterusnya') + ' dibuka sendiri dan ketibaan dicatat — tanpa isyarat, tanpa kod.', okLabel: 'Tiada marshal' });
+    if (!ok) return;
+    point.unmanned = !point.unmanned;
+    core.changed();
+    core.rebuildMarkers();
+    core.rerender();
+    map.closePopup();
+    toast(point.name + (point.unmanned ? ' — tiada marshal, dibuka automatik.' : ' — ada marshal.'));
+  }
+
   /* ── draw a suggested route ─────────────────────────────────────────── */
 
   const btnDraw = $('btnDraw');
@@ -415,6 +433,7 @@ export function mountEditing(core) {
   core.hooks.rename = renamePoint;
   core.hooks.remove = deletePoint;
   core.hooks.eta = setEta;
+  core.hooks.unmanned = toggleUnmanned;
   core.hooks.coords = editCoords;
   core.hooks.removeRoute = deleteRoute;
   core.hooks.mapClick = (latlng) => {

@@ -153,6 +153,11 @@ talian:
    tidak membuka apa-apa di telefon (Checkpoint 1 sudah dipaparkan), jadi
    app menghantarnya ke pelayan, yang mengesahkan kod dan memulakan jam
    kumpulan (`source: 'qr'`); perlu isyarat.
+   Checkpoint **tanpa marshal** (pusat kawalan: popup titik → *Tiada marshal*;
+   kolum `points.unmanned`, migrasi 0006): kodnya dihantar bersama titik itu
+   (`auto`, dalam blob terkunci), dan bila GPS telefon kumpulan berada dalam
+   80 m darinya (ketepatan ≤ 60 m), telefon membuka checkpoint seterusnya
+   sendiri dan beratur daftar masuk `qr` — tanpa isyarat.
    Pusat kawalan juga boleh mencatat sendiri (*Tiba* pada baris kumpulan)
    bila marshal melapor melalui walkie-talkie. Daftar masuk inilah yang
    mendedahkan checkpoint seterusnya kepada kumpulan; GPS hanya untuk
@@ -332,7 +337,7 @@ Melayu dan dipaparkan terus dalam app.
 
 | Cache | Isi | Dibuang bila |
 | --- | --- | --- |
-| `jl-shell-v52` | fail app + salinan terakhir `/api/state` | versi baharu digunakan |
+| `jl-shell-v53` | fail app + salinan terakhir `/api/state` | versi baharu digunakan |
 | `jl-tiles-v1` | tile kawasan program, dimuat turun **sendiri** oleh `autocache.js` | hanya melalui butang *Kosongkan* |
 | `jl-tiles-auto-v1` | tile yang terpapar semasa melayari | automatik, melebihi 1500 tile |
 

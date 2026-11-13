@@ -176,7 +176,9 @@ async function keyFromCode(code, pointId) {
 async function lockPoint(point, code) {
   const key = await keyFromCode(code, point.id);
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const data = textBytes(JSON.stringify({ id: point.id, type: point.type, name: point.name, lat: point.lat, lng: point.lng, seq: point.seq }));
+  const data = textBytes(JSON.stringify({ id: point.id, type: point.type, name: point.name, lat: point.lat, lng: point.lng, seq: point.seq,
+    // No marshal there: the phone opens the next point with this code by itself once GPS puts it at this one.
+    ...(point.unmanned ? { auto: point.code } : {}) }));
   const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, data));
   const out = new Uint8Array(iv.length + ct.length);
   out.set(iv);
@@ -376,13 +378,13 @@ async function getState(request, env, url) {
   if (who.role !== 'public') await ensureCodes(db, pid);
   const [version, pointRows, routes, groups, settings] = await Promise.all([
     getVersion(db),
-    db.prepare('SELECT id, type, name, lat, lng, eta_min, code FROM points WHERE program_id = ? ORDER BY seq').bind(pid).all(),
+    db.prepare('SELECT id, type, name, lat, lng, eta_min, code, unmanned FROM points WHERE program_id = ? ORDER BY seq').bind(pid).all(),
     db.prepare('SELECT id, name, latlngs, from_id, to_id FROM routes WHERE program_id = ? ORDER BY seq').bind(pid).all(),
     db.prepare('SELECT id, name, started_at FROM groups WHERE program_id = ? ORDER BY seq').bind(pid).all(),
     getSettings(db, program)
   ]);
   const all = pointRows.results.map((p, i) => ({
-    id: p.id, type: p.type, name: p.name, lat: p.lat, lng: p.lng, etaMin: p.eta_min, seq: i, code: p.code
+    id: p.id, type: p.type, name: p.name, lat: p.lat, lng: p.lng, etaMin: p.eta_min, seq: i, code: p.code, unmanned: !!p.unmanned
   }));
   const routeList = routes.results.map((r) => ({
     id: r.id, name: r.name, latlngs: JSON.parse(r.latlngs), from: r.from_id || null, to: r.to_id || null
@@ -394,7 +396,9 @@ async function getState(request, env, url) {
   // Only the command centre and marshals see a point's code and its place in
   // the schedule: a participant is meant to find the way and the pace, so the
   // expected time is not sent to their phone either.
-  const strip = (p) => ({ ...p, code: undefined, etaMin: undefined });
+  // A point with no marshal carries its own code as `auto`, so the phone can
+  // open the next point there by GPS, without signal.
+  const strip = (p) => ({ ...p, code: undefined, etaMin: undefined, unmanned: undefined, ...(p.unmanned ? { auto: p.code } : {}) });
   let points;
   let progress;
   let locked;
@@ -445,8 +449,9 @@ async function putState(request, env) {
   const db = env.DB;
   const pid = (await activeProgram(db)).id;
   // Codes survive an edit; a new point gets a fresh one.
-  const existing = await db.prepare('SELECT id, code FROM points WHERE program_id = ?').bind(pid).all();
+  const existing = await db.prepare('SELECT id, code, unmanned FROM points WHERE program_id = ?').bind(pid).all();
   const codeBefore = new Map(existing.results.map((p) => [p.id, p.code]));
+  const unmannedBefore = new Map(existing.results.map((p) => [p.id, p.unmanned ? 1 : 0]));
   const takenCodes = new Set();
   const stmts = [
     db.prepare('DELETE FROM points WHERE program_id = ?').bind(pid),
@@ -462,9 +467,11 @@ async function putState(request, env) {
     seen.add(p.id);
     const kept = codeBefore.get(p.id);
     const code = isCode(kept) && !takenCodes.has(kept) ? (takenCodes.add(kept), kept) : newCode(takenCodes);
-    stmts.push(db.prepare('INSERT INTO points (program_id, id, type, name, lat, lng, seq, eta_min, code) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    // A client that does not know the flag keeps what the database has.
+    const unmanned = p.type === 'start' ? 0 : typeof p.unmanned === 'boolean' ? (p.unmanned ? 1 : 0) : (unmannedBefore.get(p.id) || 0);
+    stmts.push(db.prepare('INSERT INTO points (program_id, id, type, name, lat, lng, seq, eta_min, code, unmanned) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
       .bind(pid, p.id, p.type === 'start' ? 'start' : 'cp', cleanName(p.name, 'Checkpoint'), p.lat, p.lng, i,
-        etaValue(p.etaMin, `Titik #${i + 1}`), code));
+        etaValue(p.etaMin, `Titik #${i + 1}`), code, unmanned));
   });
 
   routes.forEach((r, i) => {
@@ -845,8 +852,8 @@ async function createProgram(request, env) {
     ]);
     const taken = new Set();
     for (const p of points.results) {
-      stmts.push(db.prepare('INSERT INTO points (program_id, id, type, name, lat, lng, seq, eta_min, code) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
-        .bind(pid, p.id, p.type, p.name, p.lat, p.lng, p.seq, p.eta_min, newCode(taken)));
+      stmts.push(db.prepare('INSERT INTO points (program_id, id, type, name, lat, lng, seq, eta_min, code, unmanned) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        .bind(pid, p.id, p.type, p.name, p.lat, p.lng, p.seq, p.eta_min, newCode(taken), p.unmanned ? 1 : 0));
     }
     for (const r of routes.results) {
       stmts.push(db.prepare('INSERT INTO routes (program_id, id, name, latlngs, seq, from_id, to_id) VALUES (?, ?, ?, ?, ?, ?, ?)')
@@ -929,8 +936,8 @@ async function addProgramDay(request, env, id) {
     ]);
     const taken = new Set();
     for (const p of points.results) {
-      stmts.push(db.prepare('INSERT INTO points (program_id, id, type, name, lat, lng, seq, eta_min, code) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
-        .bind(pid, p.id, p.type, p.name, p.lat, p.lng, p.seq, p.eta_min, newCode(taken)));
+      stmts.push(db.prepare('INSERT INTO points (program_id, id, type, name, lat, lng, seq, eta_min, code, unmanned) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        .bind(pid, p.id, p.type, p.name, p.lat, p.lng, p.seq, p.eta_min, newCode(taken), p.unmanned ? 1 : 0));
     }
     for (const r of routes.results) {
       stmts.push(db.prepare('INSERT INTO routes (program_id, id, name, latlngs, seq, from_id, to_id) VALUES (?, ?, ?, ?, ?, ?, ?)')

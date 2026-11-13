@@ -8,6 +8,10 @@
 const KDF_ITERATIONS = 30000;
 export const CODE_LEN = 6;
 export const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+/** At a checkpoint with no marshal, a GPS fix this close opens the next one. */
+export const AUTO_REACH_M = 80;
+/** …from a fix at least this good (metres of accuracy). */
+export const AUTO_MAX_ACC_M = 60;
 
 /** Upper-case, drop anything outside the alphabet, keep the first six. */
 export const normCode = (v) => (typeof v === 'string' ? v.toUpperCase().replace(/[^A-Z2-9]/g, '').slice(0, CODE_LEN) : '');
